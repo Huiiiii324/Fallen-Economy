@@ -9,6 +9,13 @@ The player-facing command set is intentionally short.
 | `/shop` | EconomyShopGUI | Buy-only server shop. |
 | `/sell` | `commands.yml` alias | Opens EconomyShopGUI sell command. |
 | `/sellhand` | `commands.yml` alias | Sells held item through EconomyShopGUI. |
+| `/buy` | FallenEconomy.jar | Opens configurable buy shop. |
+| `/buy sort <mode>` | FallenEconomy.jar | Sets buy-shop sort. |
+| `/buy config` | FallenEconomy.jar | Opens admin buy-shop config GUI. |
+| `/buy config add <price>` | FallenEconomy.jar | Adds held item stack to buy shop. |
+| `/buy config remove <id>` | FallenEconomy.jar | Removes a buy-shop item. |
+| `/buy config price <id> <price>` | FallenEconomy.jar | Sets buy-shop item price. |
+| `/buy config list` | FallenEconomy.jar | Lists configured buy-shop items. |
 | `/ah` | FallenEconomy.jar | Opens auction house. |
 | `/auction` | FallenEconomy.jar alias | Opens auction house. |
 | `/ah sell <price>` | FallenEconomy.jar | Lists held item stack. |
@@ -32,7 +39,7 @@ aliases:
   - sellall hand
 ```
 
-`/ah`, `/auction`, `/order`, and `/orders` are provided by `FallenEconomy.jar`, so they do not need `commands.yml` aliases.
+`/buy`, `/ah`, `/auction`, `/order`, and `/orders` are provided by `FallenEconomy.jar`, so they do not need `commands.yml` aliases.
 
 ## Sort Modes
 
@@ -45,6 +52,20 @@ price_asc
 price_desc
 amount
 ```
+
+## Buy Config
+
+Admins with `falleneconomy.buy.config` can configure the buy shop in-game:
+
+```text
+/buy config
+/buy config add <price>
+/buy config remove <id>
+/buy config price <id> <price>
+/buy config list
+```
+
+Prices are stored directly in the active economy currency shown as `Essence`.
 
 ## EconomyShopGUI Notes
 

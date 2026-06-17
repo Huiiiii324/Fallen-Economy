@@ -67,6 +67,8 @@ After install, test:
 ```text
 /shop
 /sell
+/buy
+/buy config
 /ah
 /order
 ```
@@ -75,5 +77,7 @@ Expected behavior:
 
 - `/shop` opens buy-only categories.
 - `/sell` opens the sell GUI or sell command alias.
+- `/buy` opens Fallen configurable buy shop.
+- `/buy config` opens admin buy-shop configuration.
 - `/ah` opens Fallen auction house.
 - `/order` opens Fallen buy orders.
