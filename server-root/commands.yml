@@ -1,0 +1,10 @@
+# Drop this into the server root if you want clean player-facing commands.
+# /shop is EconomyShopGUI. /ah and /order are provided by FallenEconomy.jar.
+# /sell remains an alias to EconomyShopGUI's sell GUI.
+command-block-overrides: []
+ignore-vanilla-permissions: false
+aliases:
+  sell:
+  - sellgui $1-
+  sellhand:
+  - sellall hand

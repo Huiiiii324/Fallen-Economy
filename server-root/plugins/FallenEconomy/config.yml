@@ -1,0 +1,16 @@
+currency-name: Essence
+auction:
+  min-price: 1
+  max-price: 1000000
+  max-listings-per-player: 25
+  confirm-purchase: true
+  default-sort: NEWEST
+orders:
+  min-unit-price: 1
+  max-unit-price: 1000000
+  max-amount: 3456
+  max-orders-per-player: 25
+  default-sort: NEWEST
+internal-economy:
+  enabled-when-vault-missing: true
+  starting-balance: 0

@@ -1,0 +1,19 @@
+# Runtime server output
+logs/
+cache/
+libraries/
+versions/
+world/
+world_nether/
+world_the_end/
+banned-ips.json
+banned-players.json
+ops.json
+usercache.json
+whitelist.json
+server.properties
+
+# Plugin runtime data
+server-root/plugins/FallenEconomy/auctions.yml
+server-root/plugins/FallenEconomy/orders.yml
+server-root/plugins/FallenEconomy/balances.yml
