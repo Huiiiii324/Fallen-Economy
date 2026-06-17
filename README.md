@@ -7,6 +7,7 @@ It combines EconomyShopGUI configs with a custom `FallenEconomy.jar` for configu
 
 - `server-root/plugins/EconomyShopGUI/sections/`: section files for EconomyShopGUI v6+.
 - `server-root/plugins/EconomyShopGUI/shops/`: buy-only shop categories and sell-only values.
+- `server-root/plugins/EconomyShopGUI.jar`: EconomyShopGUI plugin jar for `/shop` and `/sell`.
 - `server-root/plugins/FallenEconomy.jar`: custom `/buy`, `/ah`, and `/order` plugin.
 - `server-root/commands.yml`: clean aliases for EconomyShopGUI sell commands.
 - `docs/`: full setup and maintenance documentation.
