@@ -1,0 +1,33 @@
+name: FallenEconomy
+version: 1.0.0
+main: dev.fallen.economy.FallenEconomyPlugin
+api-version: '1.21'
+author: Fallen
+softdepend:
+  - Vault
+commands:
+  ah:
+    description: Opens the Fallen auction house.
+    usage: /ah
+    aliases:
+      - auction
+      - auctions
+  order:
+    description: Opens or manages Fallen buy orders.
+    usage: /order
+    aliases:
+      - orders
+  feconomy:
+    description: Admin economy tools for Fallen Economy internal balances.
+    usage: /feconomy
+permissions:
+  falleneconomy.ah:
+    default: true
+  falleneconomy.ah.sell:
+    default: true
+  falleneconomy.order:
+    default: true
+  falleneconomy.order.create:
+    default: true
+  falleneconomy.admin:
+    default: op
