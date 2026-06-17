@@ -1,4 +1,9 @@
 currency-name: Essence
+buy:
+  min-price: 1
+  max-price: 1000000
+  max-items: 500
+  default-sort: NEWEST
 auction:
   min-price: 1
   max-price: 1000000

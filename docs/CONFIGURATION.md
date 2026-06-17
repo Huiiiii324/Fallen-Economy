@@ -10,6 +10,11 @@ Default config:
 
 ```yaml
 currency-name: Essence
+buy:
+  min-price: 1
+  max-price: 1000000
+  max-items: 500
+  default-sort: NEWEST
 auction:
   min-price: 1
   max-price: 1000000
@@ -32,6 +37,17 @@ internal-economy:
 | Key | Type | Description |
 | --- | --- | --- |
 | `currency-name` | string | Display name used in messages and GUI lore. |
+
+## Buy Shop
+
+| Key | Type | Description |
+| --- | --- | --- |
+| `buy.min-price` | number | Lowest allowed buy-shop item price. |
+| `buy.max-price` | number | Highest allowed buy-shop item price. |
+| `buy.max-items` | integer | Maximum number of configured buy-shop items. |
+| `buy.default-sort` | string | Initial buy-shop GUI sort mode. |
+
+Buy-shop prices are stored directly in the active economy currency displayed as `Essence`.
 
 ## Auction
 

@@ -9,7 +9,7 @@ Check:
 - `FallenEconomy.jar` is in `plugins/`
 - console does not show `UnsupportedClassVersionError`
 
-## `/ah` Or `/order` Is Unknown
+## `/buy`, `/ah`, Or `/order` Is Unknown
 
 Make sure:
 
@@ -22,9 +22,28 @@ Expected command owners:
 ```text
 /ah      -> FallenEconomy.jar
 /auction -> FallenEconomy.jar alias
+/buy     -> FallenEconomy.jar
 /order   -> FallenEconomy.jar
 /orders  -> FallenEconomy.jar alias
 ```
+
+## Buy Shop Cannot Be Edited
+
+Check:
+
+- player has `falleneconomy.buy.config`
+- player is holding an item when using `/buy config add <price>`
+- price is inside `buy.min-price` and `buy.max-price`
+- shop has not reached `buy.max-items`
+
+## Buy Shop Purchase Fails
+
+Check:
+
+- player has `falleneconomy.buy`
+- player has enough balance
+- Vault/internal economy is working
+- item still exists in `buy-shop.yml`
 
 ## Purchases Fail
 

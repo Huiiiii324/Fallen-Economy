@@ -6,6 +6,9 @@ It provides a lightweight auction house and buy-order system without needing a t
 
 ## Features
 
+- `/buy` configurable server buy shop
+- `/buy config` admin editor for adding/removing buy-shop items
+- buy-shop prices stored directly in the active currency
 - `/ah` auction house GUI
 - `/ah sell <price>` for listing the held item stack
 - auction purchase confirmation GUI
@@ -23,6 +26,7 @@ It provides a lightweight auction house and buy-order system without needing a t
 - [Commands](docs/COMMANDS.md)
 - [Permissions](docs/PERMISSIONS.md)
 - [Configuration](docs/CONFIGURATION.md)
+- [Buy Shop](docs/BUY_SHOP.md)
 - [Auction House](docs/AUCTION_HOUSE.md)
 - [Buy Orders](docs/BUY_ORDERS.md)
 - [Economy](docs/ECONOMY.md)

@@ -4,6 +4,14 @@
 
 | Command | Description |
 | --- | --- |
+| `/buy` | Opens the configurable buy shop GUI. |
+| `/buy sort <mode>` | Sets your buy-shop sort mode. |
+| `/buy config` | Opens the admin buy-shop config GUI. |
+| `/buy config add <price>` | Adds the held item stack to the buy shop. |
+| `/buy config remove <id>` | Removes a buy-shop item. |
+| `/buy config price <id> <price>` | Changes a buy-shop item price. |
+| `/buy config list` | Lists configured buy-shop items in chat. |
+| `/buy config help` | Shows buy-shop config help. |
 | `/ah` | Opens the auction house GUI. |
 | `/auction` | Alias for `/ah`. |
 | `/auctions` | Alias for `/ah`. |
@@ -30,7 +38,7 @@
 
 ## Sort Modes
 
-Both `/ah sort` and `/order sort` support:
+`/buy sort`, `/ah sort`, and `/order sort` support:
 
 ```text
 newest

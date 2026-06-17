@@ -6,6 +6,19 @@ Fallen Economy stores persistent data in YAML files inside:
 plugins/FallenEconomy/
 ```
 
+## buy-shop.yml
+
+Stores configured `/buy` shop items.
+
+Contains:
+
+- next buy-shop id
+- serialized item stack
+- price in the active currency
+- creation timestamp
+
+Do not edit this while the server is running.
+
 ## config.yml
 
 Main settings file.
@@ -58,4 +71,5 @@ Before manual edits, stop the server and copy:
 plugins/FallenEconomy/auctions.yml
 plugins/FallenEconomy/orders.yml
 plugins/FallenEconomy/balances.yml
+plugins/FallenEconomy/buy-shop.yml
 ```

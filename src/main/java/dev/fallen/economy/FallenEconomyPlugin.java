@@ -38,14 +38,18 @@ import org.bukkit.plugin.java.JavaPlugin;
 public final class FallenEconomyPlugin extends JavaPlugin implements Listener, TabExecutor {
   private final Map<Integer, AuctionListing> auctions = new LinkedHashMap<>();
   private final Map<Integer, BuyOrder> orders = new LinkedHashMap<>();
+  private final Map<Integer, BuyShopItem> buyShopItems = new LinkedHashMap<>();
   private final Map<UUID, SortMode> auctionSorts = new HashMap<>();
   private final Map<UUID, SortMode> orderSorts = new HashMap<>();
+  private final Map<UUID, SortMode> buySorts = new HashMap<>();
   private final Map<UUID, ConfirmData> confirmations = new HashMap<>();
 
+  private File buyShopFile;
   private File auctionsFile;
   private File ordersFile;
   private File balancesFile;
   private EconomyBridge economy;
+  private int nextBuyShopId = 1;
   private int nextAuctionId = 1;
   private int nextOrderId = 1;
   private String currencyName;
@@ -55,14 +59,18 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     saveDefaultConfig();
     currencyName = getConfig().getString("currency-name", "Essence");
 
+    buyShopFile = new File(getDataFolder(), "buy-shop.yml");
     auctionsFile = new File(getDataFolder(), "auctions.yml");
     ordersFile = new File(getDataFolder(), "orders.yml");
     balancesFile = new File(getDataFolder(), "balances.yml");
 
     economy = EconomyBridge.create(this);
+    loadBuyShop();
     loadAuctions();
     loadOrders();
 
+    Objects.requireNonNull(getCommand("buy")).setExecutor(this);
+    Objects.requireNonNull(getCommand("buy")).setTabCompleter(this);
     Objects.requireNonNull(getCommand("ah")).setExecutor(this);
     Objects.requireNonNull(getCommand("ah")).setTabCompleter(this);
     Objects.requireNonNull(getCommand("order")).setExecutor(this);
@@ -74,6 +82,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   @Override
   public void onDisable() {
+    saveBuyShop();
     saveAuctions();
     saveOrders();
     if (economy instanceof InternalEconomyBridge internal) internal.save();
@@ -82,10 +91,119 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   @Override
   public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
     String name = command.getName().toLowerCase(Locale.ROOT);
+    if (name.equals("buy")) return handleBuyCommand(sender, args);
     if (name.equals("ah")) return handleAuctionCommand(sender, args);
     if (name.equals("order")) return handleOrderCommand(sender, args);
     if (name.equals("feconomy")) return handleAdminEconomyCommand(sender, args);
     return false;
+  }
+
+  private boolean handleBuyCommand(CommandSender sender, String[] args) {
+    if (!(sender instanceof Player player)) {
+      sender.sendMessage(color("&cOnly players can use buy commands."));
+      return true;
+    }
+    if (!player.hasPermission("falleneconomy.buy")) {
+      player.sendMessage(color("&cYou do not have permission."));
+      return true;
+    }
+    if (args.length == 0) {
+      openBuyMenu(player, 0);
+      return true;
+    }
+
+    if (args[0].equalsIgnoreCase("config")) {
+      return handleBuyConfigCommand(player, args);
+    }
+    if (args[0].equalsIgnoreCase("sort")) {
+      if (args.length < 2) {
+        player.sendMessage(color("&eUsage: /buy sort <newest|oldest|price_asc|price_desc|amount>"));
+        return true;
+      }
+      SortMode sort = SortMode.from(args[1]);
+      if (sort == null) {
+        player.sendMessage(color("&cUnknown sort mode."));
+        return true;
+      }
+      buySorts.put(player.getUniqueId(), sort);
+      player.sendMessage(color("&aBuy shop sort set to &f" + sort.id + "&a."));
+      openBuyMenu(player, 0);
+      return true;
+    }
+    if (args[0].equalsIgnoreCase("help")) {
+      sendBuyHelp(player);
+      return true;
+    }
+
+    Integer page = parseInt(args[0]);
+    if (page != null) openBuyMenu(player, Math.max(0, page - 1));
+    else sendBuyHelp(player);
+    return true;
+  }
+
+  private boolean handleBuyConfigCommand(Player player, String[] args) {
+    if (!player.hasPermission("falleneconomy.buy.config")) {
+      player.sendMessage(color("&cYou do not have permission to configure the buy shop."));
+      return true;
+    }
+    if (args.length == 1) {
+      openBuyConfigMenu(player, 0);
+      return true;
+    }
+    switch (args[1].toLowerCase(Locale.ROOT)) {
+      case "add" -> {
+        if (args.length < 3) {
+          player.sendMessage(color("&eUsage: /buy config add <price>"));
+          return true;
+        }
+        Double price = parseMoney(args[2]);
+        if (price == null) {
+          player.sendMessage(color("&cInvalid price."));
+          return true;
+        }
+        addBuyShopItem(player, price);
+        return true;
+      }
+      case "remove", "delete" -> {
+        if (args.length < 3) {
+          player.sendMessage(color("&eUsage: /buy config remove <id>"));
+          return true;
+        }
+        Integer id = parseInt(args[2]);
+        if (id == null) {
+          player.sendMessage(color("&cInvalid item id."));
+          return true;
+        }
+        removeBuyShopItem(player, id);
+        return true;
+      }
+      case "price" -> {
+        if (args.length < 4) {
+          player.sendMessage(color("&eUsage: /buy config price <id> <price>"));
+          return true;
+        }
+        Integer id = parseInt(args[2]);
+        Double price = parseMoney(args[3]);
+        if (id == null || price == null) {
+          player.sendMessage(color("&cInvalid item id or price."));
+          return true;
+        }
+        setBuyShopPrice(player, id, price);
+        return true;
+      }
+      case "list" -> {
+        listBuyShopItems(player);
+        return true;
+      }
+      case "help" -> {
+        sendBuyConfigHelp(player);
+        return true;
+      }
+      default -> {
+        sendBuyConfigHelp(player);
+        return true;
+      }
+    }
   }
 
   private boolean handleAuctionCommand(CommandSender sender, String[] args) {
@@ -439,6 +557,127 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     player.sendMessage(color("&aOrder #" + id + " cancelled. Refunded &f" + format(refund) + " " + currencyName + "&a."));
   }
 
+  private void addBuyShopItem(Player player, double price) {
+    double min = getConfig().getDouble("buy.min-price", 1);
+    double max = getConfig().getDouble("buy.max-price", 1_000_000);
+    if (price < min || price > max) {
+      player.sendMessage(color("&cBuy price must be between &f" + format(min) + " &cand &f" + format(max) + "&c."));
+      return;
+    }
+    int maxItems = getConfig().getInt("buy.max-items", 500);
+    if (buyShopItems.size() >= maxItems) {
+      player.sendMessage(color("&cBuy shop item limit reached."));
+      return;
+    }
+    ItemStack hand = player.getInventory().getItemInMainHand();
+    if (hand.getType().isAir() || hand.getAmount() <= 0) {
+      player.sendMessage(color("&cHold the shop item stack you want to add."));
+      return;
+    }
+    ItemStack item = hand.clone();
+    BuyShopItem shopItem = new BuyShopItem(nextBuyShopId++, item, price, System.currentTimeMillis());
+    buyShopItems.put(shopItem.id, shopItem);
+    saveBuyShop();
+    player.sendMessage(color("&aAdded buy item #&f" + shopItem.id + " &a(&f" + item.getAmount() + "x " + niceMaterial(item.getType()) + "&a) for &f" + format(price) + " " + currencyName + "&a."));
+  }
+
+  private void removeBuyShopItem(Player player, int id) {
+    BuyShopItem removed = buyShopItems.remove(id);
+    if (removed == null) {
+      player.sendMessage(color("&cBuy item not found."));
+      return;
+    }
+    saveBuyShop();
+    player.sendMessage(color("&aRemoved buy item #&f" + id + "&a."));
+  }
+
+  private void setBuyShopPrice(Player player, int id, double price) {
+    double min = getConfig().getDouble("buy.min-price", 1);
+    double max = getConfig().getDouble("buy.max-price", 1_000_000);
+    if (price < min || price > max) {
+      player.sendMessage(color("&cBuy price must be between &f" + format(min) + " &cand &f" + format(max) + "&c."));
+      return;
+    }
+    BuyShopItem item = buyShopItems.get(id);
+    if (item == null) {
+      player.sendMessage(color("&cBuy item not found."));
+      return;
+    }
+    item.price = price;
+    saveBuyShop();
+    player.sendMessage(color("&aSet buy item #&f" + id + " &aprice to &f" + format(price) + " " + currencyName + "&a."));
+  }
+
+  private void listBuyShopItems(Player player) {
+    if (buyShopItems.isEmpty()) {
+      player.sendMessage(color("&eBuy shop is empty."));
+      return;
+    }
+    player.sendMessage(color("&6Fallen Buy Shop Items"));
+    buyShopItems.values().stream().limit(25).forEach(item -> player.sendMessage(color(
+      "&e#" + item.id + " &7- &f" + item.item.getAmount() + "x " + niceMaterial(item.item.getType()) + " &7- &b" + format(item.price) + " " + currencyName
+    )));
+    if (buyShopItems.size() > 25) {
+      player.sendMessage(color("&7Showing 25/" + buyShopItems.size() + " items. Use /buy config for GUI pages."));
+    }
+  }
+
+  private void buyShopItem(Player buyer, int id) {
+    BuyShopItem shopItem = buyShopItems.get(id);
+    if (shopItem == null) {
+      buyer.sendMessage(color("&cThis buy item is no longer available."));
+      return;
+    }
+    if (!economy.has(buyer, shopItem.price)) {
+      buyer.sendMessage(color("&cYou need &f" + format(shopItem.price) + " " + currencyName + "&c."));
+      return;
+    }
+    if (!economy.withdraw(buyer, shopItem.price)) {
+      buyer.sendMessage(color("&cPayment failed."));
+      return;
+    }
+    giveOrDrop(buyer, shopItem.item.clone());
+    buyer.sendMessage(color("&aBought &f" + shopItem.item.getAmount() + "x " + niceMaterial(shopItem.item.getType()) + " &afor &f" + format(shopItem.price) + " " + currencyName + "&a."));
+  }
+
+  private void openBuyMenu(Player player, int page) {
+    List<BuyShopItem> sorted = sortedBuyShop(player);
+    int maxPage = Math.max(0, (sorted.size() - 1) / 45);
+    page = Math.max(0, Math.min(page, maxPage));
+    PagedHolder holder = new PagedHolder(MenuType.BUY, page);
+    Inventory inv = Bukkit.createInventory(holder, 54, color("&8Fallen Buy &7" + (page + 1) + "/" + (maxPage + 1)));
+    holder.inventory = inv;
+    int start = page * 45;
+    for (int slot = 0; slot < 45 && start + slot < sorted.size(); slot++) {
+      BuyShopItem item = sorted.get(start + slot);
+      holder.slotIds.put(slot, item.id);
+      inv.setItem(slot, buyIcon(item, false));
+    }
+    inv.setItem(45, navItem(Material.ARROW, "&ePrevious Page"));
+    inv.setItem(49, navItem(Material.HOPPER, "&bSort: &f" + buySort(player).id));
+    inv.setItem(53, navItem(Material.ARROW, "&eNext Page"));
+    player.openInventory(inv);
+  }
+
+  private void openBuyConfigMenu(Player player, int page) {
+    List<BuyShopItem> sorted = sortedBuyShop(player);
+    int maxPage = Math.max(0, (sorted.size() - 1) / 45);
+    page = Math.max(0, Math.min(page, maxPage));
+    PagedHolder holder = new PagedHolder(MenuType.BUY_CONFIG, page);
+    Inventory inv = Bukkit.createInventory(holder, 54, color("&8Buy Config &7" + (page + 1) + "/" + (maxPage + 1)));
+    holder.inventory = inv;
+    int start = page * 45;
+    for (int slot = 0; slot < 45 && start + slot < sorted.size(); slot++) {
+      BuyShopItem item = sorted.get(start + slot);
+      holder.slotIds.put(slot, item.id);
+      inv.setItem(slot, buyIcon(item, true));
+    }
+    inv.setItem(45, navItem(Material.ARROW, "&ePrevious Page"));
+    inv.setItem(49, navItem(Material.BOOK, "&bUse /buy config add <price>"));
+    inv.setItem(53, navItem(Material.ARROW, "&eNext Page"));
+    player.openInventory(inv);
+  }
+
   private void openAuctionMenu(Player player, int page) {
     List<AuctionListing> sorted = sortedAuctions(player);
     int maxPage = Math.max(0, (sorted.size() - 1) / 45);
@@ -503,23 +742,35 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       if (slot < 0 || slot >= event.getInventory().getSize()) return;
       if (slot == 45) {
         if (paged.type == MenuType.AUCTION) openAuctionMenu(player, paged.page - 1);
-        else openOrdersMenu(player, paged.page - 1);
+        else if (paged.type == MenuType.ORDERS) openOrdersMenu(player, paged.page - 1);
+        else if (paged.type == MenuType.BUY) openBuyMenu(player, paged.page - 1);
+        else openBuyConfigMenu(player, paged.page - 1);
         return;
       }
       if (slot == 53) {
         if (paged.type == MenuType.AUCTION) openAuctionMenu(player, paged.page + 1);
-        else openOrdersMenu(player, paged.page + 1);
+        else if (paged.type == MenuType.ORDERS) openOrdersMenu(player, paged.page + 1);
+        else if (paged.type == MenuType.BUY) openBuyMenu(player, paged.page + 1);
+        else openBuyConfigMenu(player, paged.page + 1);
         return;
       }
       if (slot == 49) {
+        if (paged.type == MenuType.BUY_CONFIG) return;
         cycleSort(player, paged.type);
         if (paged.type == MenuType.AUCTION) openAuctionMenu(player, 0);
-        else openOrdersMenu(player, 0);
+        else if (paged.type == MenuType.ORDERS) openOrdersMenu(player, 0);
+        else openBuyMenu(player, 0);
         return;
       }
       Integer id = paged.slotIds.get(slot);
       if (id == null) return;
-      if (paged.type == MenuType.AUCTION) {
+      if (paged.type == MenuType.BUY) {
+        buyShopItem(player, id);
+        openBuyMenu(player, paged.page);
+      } else if (paged.type == MenuType.BUY_CONFIG) {
+        removeBuyShopItem(player, id);
+        openBuyConfigMenu(player, paged.page);
+      } else if (paged.type == MenuType.AUCTION) {
         if (getConfig().getBoolean("auction.confirm-purchase", true)) openConfirm(player, id);
         else buyAuction(player, id);
       } else {
@@ -563,6 +814,27 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     return icon;
   }
 
+  private ItemStack buyIcon(BuyShopItem shopItem, boolean configView) {
+    ItemStack icon = shopItem.item.clone();
+    ItemMeta meta = icon.getItemMeta();
+    if (meta != null) {
+      List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
+      lore.add(color("&8&m----------------"));
+      lore.add(color("&7Buy ID: &f#" + shopItem.id));
+      lore.add(color("&7Price: &b" + format(shopItem.price) + " " + currencyName));
+      if (configView) {
+        lore.add(color("&cClick to remove"));
+        lore.add(color("&7Set price: &f/buy config price " + shopItem.id + " <price>"));
+      } else {
+        lore.add(color("&eClick to buy"));
+      }
+      meta.setLore(lore);
+      meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+      icon.setItemMeta(meta);
+    }
+    return icon;
+  }
+
   private ItemStack orderIcon(BuyOrder order) {
     ItemStack icon = new ItemStack(order.material);
     ItemMeta meta = icon.getItemMeta();
@@ -593,11 +865,27 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   }
 
   private void cycleSort(Player player, MenuType type) {
-    SortMode current = type == MenuType.AUCTION ? auctionSort(player) : orderSort(player);
+    SortMode current = switch (type) {
+      case AUCTION -> auctionSort(player);
+      case ORDERS -> orderSort(player);
+      case BUY, BUY_CONFIG -> buySort(player);
+    };
     SortMode[] modes = SortMode.values();
     SortMode next = modes[(current.ordinal() + 1) % modes.length];
     if (type == MenuType.AUCTION) auctionSorts.put(player.getUniqueId(), next);
-    else orderSorts.put(player.getUniqueId(), next);
+    else if (type == MenuType.ORDERS) orderSorts.put(player.getUniqueId(), next);
+    else buySorts.put(player.getUniqueId(), next);
+  }
+
+  private List<BuyShopItem> sortedBuyShop(Player player) {
+    Comparator<BuyShopItem> comparator = switch (buySort(player)) {
+      case OLDEST -> Comparator.comparingLong(i -> i.createdAt);
+      case PRICE_ASC -> Comparator.comparingDouble(i -> i.price);
+      case PRICE_DESC -> Comparator.<BuyShopItem>comparingDouble(i -> i.price).reversed();
+      case AMOUNT -> Comparator.<BuyShopItem>comparingInt(i -> i.item.getAmount()).reversed();
+      case NEWEST -> Comparator.<BuyShopItem>comparingLong(i -> i.createdAt).reversed();
+    };
+    return buyShopItems.values().stream().sorted(comparator).collect(Collectors.toList());
   }
 
   private List<AuctionListing> sortedAuctions(Player player) {
@@ -623,11 +911,55 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   }
 
   private SortMode auctionSort(Player player) {
-    return auctionSorts.computeIfAbsent(player.getUniqueId(), ignored -> SortMode.from(getConfig().getString("auction.default-sort", "NEWEST")));
+    return auctionSorts.computeIfAbsent(player.getUniqueId(), ignored -> defaultSort("auction.default-sort"));
   }
 
   private SortMode orderSort(Player player) {
-    return orderSorts.computeIfAbsent(player.getUniqueId(), ignored -> SortMode.from(getConfig().getString("orders.default-sort", "NEWEST")));
+    return orderSorts.computeIfAbsent(player.getUniqueId(), ignored -> defaultSort("orders.default-sort"));
+  }
+
+  private SortMode buySort(Player player) {
+    return buySorts.computeIfAbsent(player.getUniqueId(), ignored -> defaultSort("buy.default-sort"));
+  }
+
+  private SortMode defaultSort(String path) {
+    SortMode sort = SortMode.from(getConfig().getString(path, "NEWEST"));
+    return sort == null ? SortMode.NEWEST : sort;
+  }
+
+  private void loadBuyShop() {
+    buyShopItems.clear();
+    FileConfiguration config = YamlConfiguration.loadConfiguration(buyShopFile);
+    nextBuyShopId = Math.max(1, config.getInt("next-id", 1));
+    ConfigurationSection section = config.getConfigurationSection("items");
+    if (section == null) return;
+    for (String key : section.getKeys(false)) {
+      ConfigurationSection row = section.getConfigurationSection(key);
+      if (row == null) continue;
+      ItemStack item = row.getItemStack("item");
+      if (item == null || item.getType().isAir()) continue;
+      Integer parsedId = parseInt(key);
+      int id = parsedId == null ? row.getInt("id") : parsedId;
+      buyShopItems.put(id, new BuyShopItem(
+        id,
+        item,
+        row.getDouble("price"),
+        row.getLong("created-at")
+      ));
+      nextBuyShopId = Math.max(nextBuyShopId, id + 1);
+    }
+  }
+
+  private void saveBuyShop() {
+    YamlConfiguration config = new YamlConfiguration();
+    config.set("next-id", nextBuyShopId);
+    for (BuyShopItem item : buyShopItems.values()) {
+      String path = "items." + item.id + ".";
+      config.set(path + "item", item.item);
+      config.set(path + "price", item.price);
+      config.set(path + "created-at", item.createdAt);
+    }
+    saveYaml(config, buyShopFile);
   }
 
   private void loadAuctions() {
@@ -732,6 +1064,25 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     player.sendMessage(color("&e/ah cancel <id> &7- cancel your listing"));
   }
 
+  private void sendBuyHelp(Player player) {
+    player.sendMessage(color("&6Fallen Buy"));
+    player.sendMessage(color("&e/buy &7- open buy shop"));
+    player.sendMessage(color("&e/buy sort <newest|oldest|price_asc|price_desc|amount>"));
+    if (player.hasPermission("falleneconomy.buy.config")) {
+      player.sendMessage(color("&e/buy config &7- open buy shop config"));
+      player.sendMessage(color("&e/buy config add <price> &7- add held item stack"));
+    }
+  }
+
+  private void sendBuyConfigHelp(Player player) {
+    player.sendMessage(color("&6Fallen Buy Config"));
+    player.sendMessage(color("&e/buy config &7- open config GUI"));
+    player.sendMessage(color("&e/buy config add <price> &7- add held item stack"));
+    player.sendMessage(color("&e/buy config remove <id> &7- remove shop item"));
+    player.sendMessage(color("&e/buy config price <id> <price> &7- set price"));
+    player.sendMessage(color("&e/buy config list &7- list shop items"));
+  }
+
   private void sendOrderHelp(Player player) {
     player.sendMessage(color("&6Fallen Orders"));
     player.sendMessage(color("&e/order &7- open buy orders"));
@@ -743,6 +1094,11 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   @Override
   public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
     String name = command.getName().toLowerCase(Locale.ROOT);
+    if (name.equals("buy")) {
+      if (args.length == 1) return filter(List.of("config", "sort", "help"), args[0]);
+      if (args.length == 2 && args[0].equalsIgnoreCase("sort")) return filter(SortMode.ids(), args[1]);
+      if (args.length == 2 && args[0].equalsIgnoreCase("config")) return filter(List.of("add", "remove", "delete", "price", "list", "help"), args[1]);
+    }
     if (name.equals("ah")) {
       if (args.length == 1) return filter(List.of("sell", "sort", "cancel", "help"), args[0]);
       if (args.length == 2 && args[0].equalsIgnoreCase("sort")) return filter(SortMode.ids(), args[1]);
@@ -800,6 +1156,20 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
   }
 
+  private static final class BuyShopItem {
+    private final int id;
+    private final ItemStack item;
+    private double price;
+    private final long createdAt;
+
+    private BuyShopItem(int id, ItemStack item, double price, long createdAt) {
+      this.id = id;
+      this.item = item;
+      this.price = price;
+      this.createdAt = createdAt;
+    }
+  }
+
   private record AuctionListing(int id, UUID seller, String sellerName, ItemStack item, double price, long createdAt) {}
 
   private static final class BuyOrder {
@@ -827,6 +1197,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private record ConfirmData(int auctionId) {}
 
   private enum MenuType {
+    BUY,
+    BUY_CONFIG,
     AUCTION,
     ORDERS
   }

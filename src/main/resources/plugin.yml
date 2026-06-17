@@ -6,6 +6,9 @@ author: Fallen
 softdepend:
   - Vault
 commands:
+  buy:
+    description: Opens or configures the Fallen buy shop.
+    usage: /buy
   ah:
     description: Opens the Fallen auction house.
     usage: /ah
@@ -21,6 +24,10 @@ commands:
     description: Admin economy tools for Fallen Economy internal balances.
     usage: /feconomy
 permissions:
+  falleneconomy.buy:
+    default: true
+  falleneconomy.buy.config:
+    default: op
   falleneconomy.ah:
     default: true
   falleneconomy.ah.sell:
