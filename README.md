@@ -27,6 +27,7 @@ It is now fully standalone: one `FallenEconomy.jar` provides Essence balances, s
 - Currency display name: `Essence`.
 - Sell values are native and generated from Paper API 1.21.11 materials.
 - Sell values are coefficient-based: `baseValue * currencyPerPoint * optional multipliers`.
+- `/sell` opens a sell chest GUI; `/sell values` opens the sell-values browser.
 - Vault is optional compatibility only. Fallen Economy always uses its own internal Essence balances.
 
 ## Read Next

@@ -8,9 +8,10 @@ The player-facing command set is provided by `FallenEconomy.jar`.
 | --- | --- |
 | `/shop` | Opens the native buy-only server shop. |
 | `/buy` | Opens the same native buy shop. |
-| `/sell` | Opens native sell-values GUI. |
+| `/sell` | Opens native sell chest GUI. |
 | `/sell hand` | Sells the held item stack. |
 | `/sell all` | Sells sellable storage inventory items, excluding armor/offhand. |
+| `/sell values` | Opens native sell-values GUI. |
 | `/balance` | Shows Essence balance. |
 | `/bal` | Alias for `/balance`. |
 | `/money` | Alias for `/balance`. |
