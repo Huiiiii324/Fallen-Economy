@@ -29,6 +29,14 @@ plugins/FallenEconomy/buy-shop.yml
 plugins/FallenEconomy/sell-values.yml
 ```
 
+Also copy this file into the server root, next to `server.properties`, if `/buy`, `/sell`, `/balance`, or `/pay` are claimed by another plugin:
+
+```text
+server-root/commands.yml -> commands.yml
+```
+
+This forces the public commands to `falleneconomy:*`.
+
 ## LuckPerms Baseline
 
 ```text

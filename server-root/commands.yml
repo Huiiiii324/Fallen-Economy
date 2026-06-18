@@ -1,5 +1,19 @@
-# Optional server command file. FallenEconomy registers these commands itself:
-# /shop, /buy, /sell, /balance, /pay, /ah, and /order.
+# Put this file in the server root next to server.properties.
+# It forces conflicted public commands back to FallenEconomy.
 command-block-overrides: []
 ignore-vanilla-permissions: false
-aliases: {}
+aliases:
+  buy:
+  - falleneconomy:buy $1-
+  sell:
+  - falleneconomy:sell $1-
+  shop:
+  - falleneconomy:shop $1-
+  bal:
+  - falleneconomy:balance $1-
+  balance:
+  - falleneconomy:balance $1-
+  money:
+  - falleneconomy:balance $1-
+  pay:
+  - falleneconomy:pay $1-

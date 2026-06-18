@@ -9,6 +9,7 @@ It is now fully standalone: one `FallenEconomy.jar` provides Essence balances, s
 - `server-root/plugins/FallenEconomy/config.yml`: main settings.
 - `server-root/plugins/FallenEconomy/buy-shop.yml`: native buy-only shop items.
 - `server-root/plugins/FallenEconomy/sell-values.yml`: native sell values for survival-obtainable items.
+- `server-root/commands.yml`: root server aliases that force `/buy` and `/sell` back to FallenEconomy when Tebex, EssentialsX, or another plugin claims them first.
 - `docs/`: full setup and maintenance documentation.
 
 ## Core Behavior
