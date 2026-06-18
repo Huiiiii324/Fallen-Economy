@@ -28,6 +28,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
@@ -240,7 +241,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return true;
     }
     if (args.length == 0) {
-      openSellMenu(player, 0);
+      openSellChest(player);
       return true;
     }
     switch (args[0].toLowerCase(Locale.ROOT)) {
@@ -260,14 +261,16 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         sellAll(player);
         return true;
       }
+      case "values" -> {
+        openSellMenu(player, 0);
+        return true;
+      }
       case "help" -> {
         sendSellHelp(player);
         return true;
       }
       default -> {
-        Integer page = parseInt(args[0]);
-        if (page != null) openSellMenu(player, Math.max(0, page - 1));
-        else sendSellHelp(player);
+        sendSellHelp(player);
         return true;
       }
     }
@@ -858,6 +861,54 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     player.openInventory(inv);
   }
 
+  private void openSellChest(Player player) {
+    SellChestHolder holder = new SellChestHolder();
+    Inventory inv = Bukkit.createInventory(holder, 54, color("&8Sell Items"));
+    holder.inventory = inv;
+    ItemStack filler = navItem(Material.GRAY_STAINED_GLASS_PANE, " ");
+    for (int slot = 45; slot < 54; slot++) {
+      inv.setItem(slot, filler);
+    }
+    updateSellChestButton(inv);
+    player.openInventory(inv);
+  }
+
+  private void updateSellChestButton(Inventory inv) {
+    double total = 0;
+    for (int slot = 0; slot < 45; slot++) {
+      ItemStack item = inv.getItem(slot);
+      if (item != null && !item.getType().isAir()) {
+        total += sellValue(item.getType()) * item.getAmount();
+      }
+    }
+    ItemStack button;
+    if (total > 0) {
+      button = navItem(Material.EMERALD, "&aSell &7(" + format(total) + " " + currencyName + ")");
+    } else {
+      button = navItem(Material.GRAY_STAINED_GLASS_PANE, "&7Place sellable items above");
+    }
+    inv.setItem(49, button);
+  }
+
+  private void sellChestContents(Player player, Inventory inv) {
+    double total = 0;
+    for (int slot = 0; slot < 45; slot++) {
+      ItemStack item = inv.getItem(slot);
+      if (item == null || item.getType().isAir()) continue;
+      double unitValue = sellValue(item.getType());
+      if (unitValue <= 0) continue;
+      total += unitValue * item.getAmount();
+      inv.setItem(slot, null);
+    }
+    if (total <= 0) {
+      player.sendMessage(color("&cNone of those items have a sell value."));
+      return;
+    }
+    economy.deposit(player, total);
+    player.sendMessage(color("&aSold for &f" + format(total) + " " + currencyName + "&a."));
+    updateSellChestButton(inv);
+  }
+
   private void openBuyConfigMenu(Player player, int page) {
     List<BuyShopItem> sorted = sortedBuyShop(player);
     int maxPage = Math.max(0, (sorted.size() - 1) / 45);
@@ -935,6 +986,22 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   public void onInventoryClick(InventoryClickEvent event) {
     if (!(event.getWhoClicked() instanceof Player player)) return;
     InventoryHolder holder = event.getInventory().getHolder();
+    if (holder instanceof SellChestHolder) {
+      int slot = event.getRawSlot();
+      int invSize = event.getInventory().getSize();
+      if (slot >= 45 && slot < invSize) {
+        event.setCancelled(true);
+        if (slot == 49) sellChestContents(player, event.getInventory());
+        return;
+      }
+      // Allow free item movement in slots 0-44 and player inventory, then refresh button
+      Bukkit.getScheduler().runTask(this, () -> {
+        if (player.isOnline() && player.getOpenInventory().getTopInventory().getHolder() instanceof SellChestHolder) {
+          updateSellChestButton(player.getOpenInventory().getTopInventory());
+        }
+      });
+      return;
+    }
     if (holder instanceof PagedHolder paged) {
       event.setCancelled(true);
       int slot = event.getRawSlot();
@@ -974,7 +1041,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       if (id == null) return;
       if (paged.type == MenuType.BUY) {
         buyShopItem(player, id);
-        openBuyMenu(player, paged.page);
+        int pg = paged.page;
+        Bukkit.getScheduler().runTask(this, () -> openBuyMenu(player, pg));
       } else if (paged.type == MenuType.BUY_CONFIG) {
         removeBuyShopItem(player, id);
         openBuyConfigMenu(player, paged.page);
@@ -1003,6 +1071,32 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   @EventHandler
   public void onInventoryClose(InventoryCloseEvent event) {
     confirmations.remove(event.getPlayer().getUniqueId());
+    if (!(event.getPlayer() instanceof Player player)) return;
+    if (!(event.getInventory().getHolder() instanceof SellChestHolder)) return;
+    for (int slot = 0; slot < 45; slot++) {
+      ItemStack item = event.getInventory().getItem(slot);
+      if (item != null && !item.getType().isAir()) {
+        giveOrDrop(player, item.clone());
+        event.getInventory().setItem(slot, null);
+      }
+    }
+  }
+
+  @EventHandler
+  public void onInventoryDrag(InventoryDragEvent event) {
+    if (!(event.getWhoClicked() instanceof Player player)) return;
+    if (!(event.getInventory().getHolder() instanceof SellChestHolder)) return;
+    for (int slot : event.getRawSlots()) {
+      if (slot >= 45 && slot < event.getInventory().getSize()) {
+        event.setCancelled(true);
+        return;
+      }
+    }
+    Bukkit.getScheduler().runTask(this, () -> {
+      if (player.isOnline() && player.getOpenInventory().getTopInventory().getHolder() instanceof SellChestHolder) {
+        updateSellChestButton(player.getOpenInventory().getTopInventory());
+      }
+    });
   }
 
   private ItemStack auctionIcon(AuctionListing listing) {
@@ -1341,9 +1435,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private void sendSellHelp(Player player) {
     player.sendMessage(color("&6Fallen Sell"));
-    player.sendMessage(color("&e/sell &7- open sell values"));
+    player.sendMessage(color("&e/sell &7- open sell GUI"));
     player.sendMessage(color("&e/sell hand &7- sell held item stack"));
     player.sendMessage(color("&e/sell all &7- sell inventory storage"));
+    player.sendMessage(color("&e/sell values &7- view item sell values"));
   }
 
   private void sendBuyConfigHelp(Player player) {
@@ -1371,7 +1466,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       if (args.length == 2 && args[0].equalsIgnoreCase("sort")) return filter(SortMode.ids(), args[1]);
       if (args.length == 2 && args[0].equalsIgnoreCase("config")) return filter(List.of("add", "remove", "delete", "price", "list", "help"), args[1]);
     }
-    if (name.equals("sell") && args.length == 1) return filter(List.of("hand", "all", "help"), args[0]);
+    if (name.equals("sell") && args.length == 1) return filter(List.of("hand", "all", "values", "help"), args[0]);
     if (name.equals("ah")) {
       if (args.length == 1) return filter(List.of("sell", "sort", "cancel", "help"), args[0]);
       if (args.length == 2 && args[0].equalsIgnoreCase("sort")) return filter(SortMode.ids(), args[1]);
@@ -1537,6 +1632,15 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     private ConfirmHolder(int auctionId) {
       this.auctionId = auctionId;
     }
+
+    @Override
+    public Inventory getInventory() {
+      return inventory;
+    }
+  }
+
+  private static final class SellChestHolder implements InventoryHolder {
+    private Inventory inventory;
 
     @Override
     public Inventory getInventory() {

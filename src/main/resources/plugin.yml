@@ -1,8 +1,11 @@
 name: FallenEconomy
-version: 1.2.0
+version: 1.2.1
 main: dev.fallen.economy.FallenEconomyPlugin
 api-version: '1.21'
-author: Fallen
+authors:
+  - Fallen
+  - RimumuruDev
+  - APonder
 softdepend:
   - Vault
 commands:
