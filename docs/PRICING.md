@@ -1,6 +1,6 @@
 # Pricing
 
-Sell prices are generated from the workspace config:
+Sell prices are paid in `$` and are generated from the workspace config:
 
 ```text
 tools/pricing.coefficients.json
@@ -14,7 +14,7 @@ sell = baseValue * currencyPerPoint * materialMultiplier * matchingRuleMultiplie
 
 ## Fields
 
-- `currencyPerPoint`: global coefficient. Increase this to make every item sell for more Essence.
+- `currencyPerPoint`: global coefficient. Increase this to make every generated sell value pay more `$`.
 - `roundTo`: rounds generated prices to a step, for example `5` makes prices 5, 10, 15.
 - `minimum`: lowest generated price.
 - `baseValueOverrides`: changes the base point value before multipliers.
@@ -24,22 +24,13 @@ sell = baseValue * currencyPerPoint * materialMultiplier * matchingRuleMultiplie
 
 ## Examples
 
-Double the whole economy:
+Double generated sell values:
 
 ```json
 "currencyPerPoint": 2
 ```
 
-Make ores worth 50% more:
-
-```json
-{
-  "suffix": "_ORE",
-  "multiplier": 1.5
-}
-```
-
-Force totems to sell for exactly 500 Essence:
+Force totems to sell for exactly 500 `$`:
 
 ```json
 "sellOverrides": {
@@ -47,8 +38,4 @@ Force totems to sell for exactly 500 Essence:
 }
 ```
 
-After changes, regenerate:
-
-```text
-node tools/generate_fallen_shop_template.mjs
-```
+After changes, regenerate configs or rebuild the plugin package.

@@ -1,47 +1,21 @@
 # Commands
 
-The player-facing command set is provided by `FallenEconomy.jar`.
-
-## Main Commands
-
-| Command | Purpose |
+| Command | Description |
 | --- | --- |
-| `/shop` | Opens the native buy-only server shop. |
-| `/buy` | Opens the same native buy shop. |
-| `/sell` | Opens native sell chest GUI. |
-| `/sell hand` | Sells the held item stack. |
-| `/sell all` | Sells sellable storage inventory items, excluding armor/offhand. |
-| `/sell values` | Opens native sell-values GUI. |
-| `/balance` | Shows Essence balance. |
-| `/bal` | Alias for `/balance`. |
-| `/money` | Alias for `/balance`. |
-| `/pay <player> <amount>` | Pays Essence to another online player. |
-| `/ah` | Opens auction house. |
-| `/auction` | Alias for `/ah`. |
-| `/ah sell <price>` | Lists held item stack. |
-| `/order` | Opens buy orders. |
-| `/orders` | Alias for `/order`. |
-
-## Admin Commands
-
-```text
-/buy config
-/buy config add <price>
-/buy config remove <id>
-/buy config price <id> <price>
-/buy config list
-/feconomy balance <player>
-/feconomy give <player> <amount>
-```
-
-## Sort Modes
-
-Supported sort modes:
-
-```text
-newest
-oldest
-price_asc
-price_desc
-amount
-```
+| `/shop`, `/buy` | Open normal `$` shop categories. |
+| `/buy <end|nether|gear|food>` | Open a normal shop category. |
+| `/buy config add <price> <category> [money|essence]` | Add held item to the normal shop config. |
+| `/essence` | Show PlayerPoints Essence balance. |
+| `/essenceshop` | Open Essence shop. |
+| `/essenceshop config add <price> <category>` | Add held item to Essence shop config. |
+| `/sell` | Open sell GUI. |
+| `/sell hand` | Sell held stack for `$`. |
+| `/sell all` | Sell sellable storage inventory items for `$`. |
+| `/balance`, `/bal`, `/money` | Show `$` balance. |
+| `/pay <player> <amount>` | Transfer `$`. |
+| `/ah`, `/auction`, `/auctions` | Open auction house using `$`. |
+| `/ah sell <price>` | List held stack for `$`. |
+| `/order`, `/orders` | Open buy orders using `$`. |
+| `/order create <unitPrice> <amount>` | Create a funded `$` buy order. |
+| `/feconomy balance/give/take/set` | Manage `$`. |
+| `/feconomy essence balance/give/take/set` | Manage PlayerPoints Essence. |

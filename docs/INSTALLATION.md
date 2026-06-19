@@ -1,73 +1,30 @@
 # Installation
 
-Target server: Paper `1.21.11` with Java `21`.
+Install on Paper `1.21.11`.
 
-## Required Plugins
-
-- `FallenEconomy.jar`
-- Optional: Vault, only for compatibility with other plugins that use Vault economy.
-- Optional but recommended: LuckPerms.
-
-EconomyShopGUI and a separate economy provider are not required.
-
-## Copy Files
-
-Copy the contents of:
-
-```text
-server-root/plugins/
-```
-
-into the server `plugins/` folder.
-
-Included:
+Required:
 
 ```text
 plugins/FallenEconomy.jar
-plugins/FallenEconomy/config.yml
+```
+
+Optional:
+
+- `PlayerPoints.jar` for Essence and `/essenceshop`.
+- `Vault.jar` for other plugins that need a Vault economy provider.
+
+Not required:
+
+- EconomyShopGUI.
+- a separate Vault economy provider.
+
+Fallen Economy generates and uses:
+
+```text
+plugins/FallenEconomy/money.yml
 plugins/FallenEconomy/buy-shop.yml
+plugins/FallenEconomy/essence-shop.yml
 plugins/FallenEconomy/sell-values.yml
-```
-
-Also copy this file into the server root, next to `server.properties`, if `/buy`, `/sell`, `/balance`, or `/pay` are claimed by another plugin:
-
-```text
-server-root/commands.yml -> commands.yml
-```
-
-This forces the public commands to `falleneconomy:*`.
-
-## LuckPerms Baseline
-
-```text
-/lp group default permission set falleneconomy.buy true
-/lp group default permission set falleneconomy.sell true
-/lp group default permission set falleneconomy.balance true
-/lp group default permission set falleneconomy.pay true
-/lp group default permission set falleneconomy.ah true
-/lp group default permission set falleneconomy.ah.sell true
-/lp group default permission set falleneconomy.order true
-/lp group default permission set falleneconomy.order.create true
-```
-
-Admin permissions:
-
-```text
-/lp group admin permission set falleneconomy.admin true
-/lp group admin permission set falleneconomy.buy.config true
-```
-
-## Verification
-
-After install, test:
-
-```text
-/shop
-/sell
-/sell hand
-/sell all
-/balance
-/pay <player> <amount>
-/ah
-/order
+plugins/FallenEconomy/auctions.yml
+plugins/FallenEconomy/orders.yml
 ```

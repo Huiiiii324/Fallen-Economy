@@ -13,6 +13,7 @@ node tools/generate_fallen_shop_template.mjs
 The generator rebuilds:
 
 - `Fallen Economy/server-root/plugins/FallenEconomy/buy-shop.yml`
+- `Fallen Economy/server-root/plugins/FallenEconomy/essence-shop.yml`
 - `Fallen Economy/server-root/plugins/FallenEconomy/sell-values.yml`
 - `Fallen Economy/server-root/commands.yml`
 - `Fallen Economy/docs`

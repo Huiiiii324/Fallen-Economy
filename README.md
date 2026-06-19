@@ -1,40 +1,30 @@
 # Fallen Economy
 
-Fallen Economy is a Paper 1.21.11 economy/shop setup for a PvP-focused survival server.
-It is now fully standalone: one `FallenEconomy.jar` provides Essence balances, shop, selling, auctions, and buy orders.
+Server package for the standalone Fallen Economy plugin on Paper `1.21.11`.
+
+`FallenEconomy.jar` now handles the normal `$` economy, shop, selling, auction house, and buy orders by itself. Essence is separate and comes from PlayerPoints for `/essence`, `/essenceshop`, spawners, keys, and future bounty integration.
 
 ## Included
 
-- `server-root/plugins/FallenEconomy.jar`: standalone Fallen Economy plugin.
-- `server-root/plugins/FallenEconomy/config.yml`: main settings.
-- `server-root/plugins/FallenEconomy/buy-shop.yml`: native buy-only shop items.
-- `server-root/plugins/FallenEconomy/sell-values.yml`: native sell values for survival-obtainable items.
-- `server-root/commands.yml`: root server aliases that force `/buy` and `/sell` back to FallenEconomy when Tebex, EssentialsX, or another plugin claims them first.
-- `docs/`: full setup and maintenance documentation.
+- `server-root/plugins/FallenEconomy.jar`
+- `server-root/plugins/FallenEconomy/config.yml`
+- `server-root/plugins/FallenEconomy/buy-shop.yml`
+- `server-root/plugins/FallenEconomy/essence-shop.yml`
+- `server-root/plugins/FallenEconomy/sell-values.yml`
 
-## Core Behavior
+## Currency Split
 
-- `/shop` and `/buy`: native buy-only PvP/rare/supply server shop.
-- `/buy config`: admin buy-shop editor for adding/removing items and setting prices.
-- `/sell`: native sell-values GUI.
-- `/sell hand`: sells the held stack.
-- `/sell all`: sells sellable storage inventory items, without armor/offhand.
-- `/balance`, `/bal`, `/money`: shows Essence balance.
-- `/pay <player> <amount>`: sends Essence to another online player.
-- `/ah`: auction house from `FallenEconomy.jar`.
-- `/ah sell <price>`: lists the held item stack.
-- `/order`: buy orders from `FallenEconomy.jar`.
-- `/order create <unitPrice> <amount>`: creates an item order using the held item type.
-- Currency display name: `Essence`.
-- Sell values are native and generated from Paper API 1.21.11 materials.
-- Sell values are coefficient-based: `baseValue * currencyPerPoint * optional multipliers`.
-- `/sell` opens a sell chest GUI; `/sell values` opens the sell-values browser.
-- Vault is optional compatibility only. Fallen Economy always uses its own internal Essence balances.
+- `$`: internal `money.yml`, used by `/shop`, `/sell`, `/ah`, `/order`, `/balance`, `/pay`, and Vault compatibility.
+- `Essence`: PlayerPoints-backed, used by `/essence` and `/essenceshop`.
 
-## Read Next
+Vault is optional and exposes only `$`. PlayerPoints is optional for server startup, but required for Essence features.
 
-- `docs/INSTALLATION.md`: install steps.
-- `docs/COMMANDS.md`: command map and aliases.
-- `docs/PRICING.md`: coefficient pricing system.
-- `docs/AUCTION_AND_ORDERS.md`: custom auction/order module.
-- `docs/REGENERATE.md`: how to rebuild configs after price changes.
+## Main Commands
+
+- `/shop`, `/buy`: normal shop categories.
+- `/essenceshop`: Essence shop, currently spawners.
+- `/sell`, `/sell hand`, `/sell all`: sell items for `$`.
+- `/balance`, `/bal`, `/money`, `/pay`: `$` balance and transfers.
+- `/ah`: auction house using `$`.
+- `/order`: buy orders using `$`.
+- `/feconomy`: admin `$` and Essence management.

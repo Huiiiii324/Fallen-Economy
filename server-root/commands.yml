@@ -9,6 +9,10 @@ aliases:
   - falleneconomy:sell $1-
   shop:
   - falleneconomy:shop $1-
+  essence:
+  - falleneconomy:essence $1-
+  essenceshop:
+  - falleneconomy:essenceshop $1-
   bal:
   - falleneconomy:balance $1-
   balance:
