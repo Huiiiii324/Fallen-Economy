@@ -2,19 +2,19 @@
 
 Standalone Paper `1.21.11` economy plugin for the Fallen Economy package.
 
-`FallenEconomy.jar` provides Essence balances, native `/shop`, native `/sell`, auctions, and buy orders without EconomyShopGUI or an external economy provider. Vault is optional compatibility only: if `Vault.jar` is installed, Fallen Economy exposes its internal Essence balances as a Vault economy provider for other plugins.
+`FallenEconomy.jar` provides a native `$` economy, `/shop`, `/sell`, auctions, buy orders, and a separate PlayerPoints-backed Essence shop. EconomyShopGUI is not required. Vault is optional compatibility only: if `Vault.jar` is installed, Fallen Economy exposes `$` as the Vault economy provider.
 
 ## Features
 
-- `/shop` and `/buy` native buy-only server shop
-- `/buy config` admin editor for adding/removing buy-shop items
-- `/sell`, `/sell hand`, and `/sell all` native selling
-- `/balance`, `/bal`, `/money`, and `/pay`
-- `/ah` auction house with `/ah sell <price>`
-- `/order` buy-order GUI and funded item orders
-- internal Essence balances stored in `balances.yml`
-- optional Vault provider registration
-- YAML persistence for shop, sell values, auctions, orders, and balances
+- `/shop` and `/buy` native buy-only shop with End, Nether, Gear, and Food categories
+- `/essenceshop` for PlayerPoints Essence items, starting with spawners
+- `/sell`, `/sell hand`, and `/sell all` native selling into `$`
+- `/balance`, `/bal`, `/money`, and `/pay` for `$`
+- `/essence` for PlayerPoints Essence balance
+- `/ah` auction house and `/order` funded buy orders using `$`
+- internal `$` balances stored in `money.yml`
+- optional Vault provider registration for `$`
+- YAML persistence for shop, sell values, essence shop, auctions, orders, and money
 
 ## Documentation
 

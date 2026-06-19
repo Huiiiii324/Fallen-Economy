@@ -1,0 +1,92 @@
+next-id: 10
+items:
+  1:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: PIG
+      name: Pig Spawner
+    price: 500
+    created-at: 1781800000001
+  2:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: COW
+      name: Cow Spawner
+    price: 750
+    created-at: 1781800000002
+  3:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: ZOMBIE
+      name: Zombie Spawner
+    price: 1000
+    created-at: 1781800000003
+  4:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: SPIDER
+      name: Spider Spawner
+    price: 1000
+    created-at: 1781800000004
+  5:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: SKELETON
+      name: Skeleton Spawner
+    price: 1200
+    created-at: 1781800000005
+  6:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: CREEPER
+      name: Creeper Spawner
+    price: 2000
+    created-at: 1781800000006
+  7:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: ZOMBIFIED_PIGLIN
+      name: Zombified Piglin Spawner
+    price: 1800
+    created-at: 1781800000007
+  8:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: BLAZE
+      name: Blaze Spawner
+    price: 3500
+    created-at: 1781800000008
+  9:
+    category: Spawners
+    currency: ESSENCE
+    item:
+      material: SPAWNER
+      amount: 1
+      entity-type: IRON_GOLEM
+      name: Iron Golem Spawner
+    price: 7500
+    created-at: 1781800000009

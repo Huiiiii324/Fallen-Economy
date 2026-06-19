@@ -1,62 +1,40 @@
 # Economy
 
-Fallen Economy always uses its own internal Essence balances.
+Fallen Economy has two currencies.
 
-Balances are stored in:
+## `$`
 
-```text
-plugins/FallenEconomy/balances.yml
-```
-
-Startup log without Vault:
+The normal server economy is internal and stored in:
 
 ```text
-[FallenEconomy] Using Fallen internal Essence balances.
-[FallenEconomy] Vault not found. Running standalone without Vault compatibility.
+plugins/FallenEconomy/money.yml
 ```
 
-Startup log with Vault:
+Used by:
 
-```text
-[FallenEconomy] Using Fallen internal Essence balances.
-[FallenEconomy] Registered Fallen Economy as a Vault economy provider.
-```
+- `/shop` and `/buy` normal categories
+- `/sell`, `/sell hand`, `/sell all`
+- `/balance`, `/bal`, `/money`
+- `/pay`
+- `/ah`
+- `/order`
+- Vault compatibility provider
+- `/feconomy balance/give/take/set`
 
-## Player Commands
+Vault is optional. If `Vault.jar` is installed, Fallen Economy registers `$` as the Vault economy provider. Vault never exposes Essence.
 
-```text
-/balance
-/bal
-/money
-/pay <player> <amount>
-```
+## Essence
 
-## Admin Commands
+Essence is backed by PlayerPoints.
 
-```text
-/feconomy balance <player>
-/feconomy give <player> <amount>
-```
+Used by:
 
-These require:
+- `/essence`
+- `/essenceshop`
+- Essence-priced shop entries such as spawners
+- `/feconomy essence balance/give/take/set`
+- future bounty/key integrations
 
-```text
-falleneconomy.admin
-```
+If PlayerPoints is not installed, Fallen Economy still loads. Essence commands fail gracefully with a PlayerPoints-required message.
 
-## Starting Balance
-
-Players not present in `balances.yml` use:
-
-```yaml
-internal-economy:
-  starting-balance: 0
-```
-
-This is not written to disk until their balance changes.
-
-## Vault Compatibility
-
-Vault is optional. If `Vault.jar` is installed, Fallen Economy registers itself as a Vault economy provider so other plugins can read/write Essence through Vault.
-
-Vault does not replace the internal economy. `balances.yml` remains the source of truth.
+Old `balances.yml` is not converted into `money.yml`; this prevents old Essence balances from being mixed into normal `$`.

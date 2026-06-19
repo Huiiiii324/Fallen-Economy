@@ -1,103 +1,58 @@
 # Buy Shop
 
-The buy shop is a configurable server shop built into `FallenEconomy.jar`.
+`/shop` and `/buy` open the same native buy-only shop.
 
-Players open it with:
+## Normal Shop
+
+The normal shop uses `$` by default and is stored in:
 
 ```text
-/shop
-/buy
+plugins/FallenEconomy/buy-shop.yml
 ```
 
-## Admin Config
+Starter categories:
 
-Admins with `falleneconomy.buy.config` can open the config GUI:
+- End
+- Nether
+- Gear
+- Food
+
+Each item stores:
+
+- `category`
+- `currency`
+- `item`
+- `price`
+- `created-at`
+
+Admin add command:
 
 ```text
-/buy config
-```
-
-The config GUI shows all buy-shop entries. Clicking an entry removes it.
-
-## Adding Items
-
-Hold the item stack you want to sell, then run:
-
-```text
-/buy config add <price>
+/buy config add <price> <category> [money|essence]
 ```
 
 Example:
 
 ```text
-/buy config add 250
+/buy config add 350 Gear money
 ```
 
-This adds the exact held item stack to `buy-shop.yml`. The item is not removed from the admin's inventory. The price is stored directly in the active currency, shown as `Essence`.
+## Essence Shop
 
-If the held stack amount is `64`, players buy `64`. If it is `1`, players buy `1`.
-
-## Removing Items
-
-Remove by command:
+`/essenceshop` is separate and uses PlayerPoints Essence. It is stored in:
 
 ```text
-/buy config remove <id>
+plugins/FallenEconomy/essence-shop.yml
 ```
 
-or click the item inside `/buy config`.
+Starter category:
 
-## Changing Prices
+- Spawners
 
-Set a new price:
+Admin add command:
 
 ```text
-/buy config price <id> <price>
+/essenceshop config add <price> <category>
 ```
 
-Example:
-
-```text
-/buy config price 4 1200
-```
-
-## Listing Items
-
-Show the first 25 configured entries:
-
-```text
-/buy config list
-```
-
-## Buying
-
-Players click an item in `/shop` or `/buy`. The plugin withdraws the configured price and gives the configured item stack. If the inventory is full, leftovers drop at the player's location.
-
-## Limits
-
-Configured in:
-
-```yaml
-buy:
-  min-price: 1
-  max-price: 1000000
-  max-items: 500
-```
-
-## Sorting
-
-Command:
-
-```text
-/buy sort <mode>
-```
-
-Modes:
-
-```text
-newest
-oldest
-price_asc
-price_desc
-amount
-```
+Spawner shop entries use real `SPAWNER` items with `entity-type` stored through Bukkit item metadata. `Arrow of Slow Falling` uses a real `TIPPED_ARROW` with Slow Falling potion data.

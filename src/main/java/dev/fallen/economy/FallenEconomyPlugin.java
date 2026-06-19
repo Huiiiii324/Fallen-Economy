@@ -17,12 +17,14 @@ import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
+import org.bukkit.block.CreatureSpawner;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabExecutor;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
@@ -33,14 +35,19 @@ import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.BlockStateMeta;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.inventory.meta.PotionMeta;
 import org.bukkit.plugin.ServicePriority;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 
 public final class FallenEconomyPlugin extends JavaPlugin implements Listener, TabExecutor {
   private final Map<Integer, AuctionListing> auctions = new LinkedHashMap<>();
   private final Map<Integer, BuyOrder> orders = new LinkedHashMap<>();
   private final Map<Integer, BuyShopItem> buyShopItems = new LinkedHashMap<>();
+  private final Map<Integer, BuyShopItem> essenceShopItems = new LinkedHashMap<>();
   private final Map<Material, Double> sellValues = new LinkedHashMap<>();
   private final Map<UUID, SortMode> auctionSorts = new HashMap<>();
   private final Map<UUID, SortMode> orderSorts = new HashMap<>();
@@ -48,35 +55,44 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private final Map<UUID, ConfirmData> confirmations = new HashMap<>();
 
   private File buyShopFile;
+  private File essenceShopFile;
   private File sellValuesFile;
   private File auctionsFile;
   private File ordersFile;
   private File balancesFile;
   private EconomyBridge economy;
+  private PlayerPointsEssenceBridge essence;
   private VaultCompatibilityHook vaultHook;
   private int nextBuyShopId = 1;
+  private int nextEssenceShopId = 1;
   private int nextAuctionId = 1;
   private int nextOrderId = 1;
-  private String currencyName;
+  private String moneyName;
+  private String essenceName;
 
   @Override
   public void onEnable() {
     saveDefaultConfig();
-    currencyName = getConfig().getString("currency-name", "Essence");
+    moneyName = getConfig().getString("money.name", getConfig().getString("currency-name", "$"));
+    essenceName = getConfig().getString("essence.name", "Essence");
 
     buyShopFile = new File(getDataFolder(), "buy-shop.yml");
+    essenceShopFile = new File(getDataFolder(), "essence-shop.yml");
     sellValuesFile = new File(getDataFolder(), "sell-values.yml");
     auctionsFile = new File(getDataFolder(), "auctions.yml");
     ordersFile = new File(getDataFolder(), "orders.yml");
-    balancesFile = new File(getDataFolder(), "balances.yml");
+    balancesFile = new File(getDataFolder(), getConfig().getString("money.storage-file", "money.yml"));
 
     saveBundledDataFile("buy-shop.yml");
+    saveBundledDataFile("essence-shop.yml");
     saveBundledDataFile("sell-values.yml");
     economy = EconomyBridge.create(this);
+    essence = PlayerPointsEssenceBridge.create(this);
     if (economy instanceof InternalEconomyBridge internal) {
-      vaultHook = VaultCompatibilityHook.tryRegister(this, internal, currencyName);
+      vaultHook = VaultCompatibilityHook.tryRegister(this, internal, moneyName);
     }
     loadBuyShop();
+    loadEssenceShop();
     loadSellValues();
     loadAuctions();
     loadOrders();
@@ -87,6 +103,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     Objects.requireNonNull(getCommand("buy")).setTabCompleter(this);
     Objects.requireNonNull(getCommand("sell")).setExecutor(this);
     Objects.requireNonNull(getCommand("sell")).setTabCompleter(this);
+    Objects.requireNonNull(getCommand("essence")).setExecutor(this);
+    Objects.requireNonNull(getCommand("essence")).setTabCompleter(this);
+    Objects.requireNonNull(getCommand("essenceshop")).setExecutor(this);
+    Objects.requireNonNull(getCommand("essenceshop")).setTabCompleter(this);
     Objects.requireNonNull(getCommand("ah")).setExecutor(this);
     Objects.requireNonNull(getCommand("ah")).setTabCompleter(this);
     Objects.requireNonNull(getCommand("order")).setExecutor(this);
@@ -103,6 +123,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   @Override
   public void onDisable() {
     saveBuyShop();
+    saveEssenceShop();
     saveAuctions();
     saveOrders();
     if (vaultHook != null) vaultHook.unregister();
@@ -115,6 +136,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     if (name.equals("shop")) return handleBuyCommand(sender, args);
     if (name.equals("buy")) return handleBuyCommand(sender, args);
     if (name.equals("sell")) return handleSellCommand(sender, args);
+    if (name.equals("essence")) return handleEssenceCommand(sender);
+    if (name.equals("essenceshop")) return handleEssenceShopCommand(sender, args);
     if (name.equals("ah")) return handleAuctionCommand(sender, args);
     if (name.equals("order")) return handleOrderCommand(sender, args);
     if (name.equals("balance")) return handleBalanceCommand(sender);
@@ -133,7 +156,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return true;
     }
     if (args.length == 0) {
-      openBuyMenu(player, 0);
+      openShopCategories(player);
       return true;
     }
 
@@ -152,7 +175,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       }
       buySorts.put(player.getUniqueId(), sort);
       player.sendMessage(color("&aBuy shop sort set to &f" + sort.id + "&a."));
-      openBuyMenu(player, 0);
+      openShopCategories(player);
       return true;
     }
     if (args[0].equalsIgnoreCase("help")) {
@@ -161,8 +184,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
 
     Integer page = parseInt(args[0]);
-    if (page != null) openBuyMenu(player, Math.max(0, page - 1));
-    else sendBuyHelp(player);
+    if (page != null) openShopCategories(player);
+    else openBuyMenu(player, canonicalCategory(args[0]), 0);
     return true;
   }
 
@@ -177,8 +200,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
     switch (args[1].toLowerCase(Locale.ROOT)) {
       case "add" -> {
-        if (args.length < 3) {
-          player.sendMessage(color("&eUsage: /buy config add <price>"));
+        if (args.length < 4) {
+          player.sendMessage(color("&eUsage: /buy config add <price> <category> [money|essence]"));
           return true;
         }
         Double price = parseMoney(args[2]);
@@ -186,7 +209,12 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
           player.sendMessage(color("&cInvalid price."));
           return true;
         }
-        addBuyShopItem(player, price);
+        ShopCurrency currency = args.length >= 5 ? ShopCurrency.from(args[4]) : ShopCurrency.MONEY;
+        if (currency == null) {
+          player.sendMessage(color("&cCurrency must be money or essence."));
+          return true;
+        }
+        addBuyShopItem(player, price, args[3], currency, buyShopItems, true);
         return true;
       }
       case "remove", "delete" -> {
@@ -285,8 +313,112 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       player.sendMessage(color("&cYou do not have permission."));
       return true;
     }
-    player.sendMessage(color("&aBalance: &f" + format(economy.balance(player)) + " " + currencyName));
+    player.sendMessage(color("&aBalance: &f" + format(economy.balance(player)) + " " + moneyName));
     return true;
+  }
+
+  private boolean handleEssenceCommand(CommandSender sender) {
+    if (!(sender instanceof Player player)) {
+      sender.sendMessage(color("&cOnly players can use Essence commands."));
+      return true;
+    }
+    if (!player.hasPermission("falleneconomy.essence")) {
+      player.sendMessage(color("&cYou do not have permission."));
+      return true;
+    }
+    if (!essence.available()) {
+      player.sendMessage(color("&cPlayerPoints is required for Essence."));
+      return true;
+    }
+    player.sendMessage(color("&aEssence: &f" + format(essence.balance(player)) + " " + essenceName));
+    return true;
+  }
+
+  private boolean handleEssenceShopCommand(CommandSender sender, String[] args) {
+    if (!(sender instanceof Player player)) {
+      sender.sendMessage(color("&cOnly players can use Essence shop commands."));
+      return true;
+    }
+    if (!player.hasPermission("falleneconomy.essenceshop")) {
+      player.sendMessage(color("&cYou do not have permission."));
+      return true;
+    }
+    if (args.length == 0) {
+      openEssenceShopMenu(player, "Spawners", 0);
+      return true;
+    }
+    if (args[0].equalsIgnoreCase("config")) {
+      return handleEssenceShopConfigCommand(player, args);
+    }
+    if (args[0].equalsIgnoreCase("help")) {
+      sendEssenceShopHelp(player);
+      return true;
+    }
+    Integer page = parseInt(args[0]);
+    if (page != null) openEssenceShopMenu(player, "Spawners", Math.max(0, page - 1));
+    else openEssenceShopMenu(player, canonicalCategory(args[0]), 0);
+    return true;
+  }
+
+  private boolean handleEssenceShopConfigCommand(Player player, String[] args) {
+    if (!player.hasPermission("falleneconomy.essenceshop.config")) {
+      player.sendMessage(color("&cYou do not have permission to configure the Essence shop."));
+      return true;
+    }
+    if (args.length == 1) {
+      openEssenceShopConfigMenu(player, 0);
+      return true;
+    }
+    switch (args[1].toLowerCase(Locale.ROOT)) {
+      case "add" -> {
+        if (args.length < 4) {
+          player.sendMessage(color("&eUsage: /essenceshop config add <price> <category>"));
+          return true;
+        }
+        Double price = parseMoney(args[2]);
+        if (price == null) {
+          player.sendMessage(color("&cInvalid price."));
+          return true;
+        }
+        addBuyShopItem(player, price, args[3], ShopCurrency.ESSENCE, essenceShopItems, false);
+        return true;
+      }
+      case "remove", "delete" -> {
+        if (args.length < 3) {
+          player.sendMessage(color("&eUsage: /essenceshop config remove <id>"));
+          return true;
+        }
+        Integer id = parseInt(args[2]);
+        if (id == null) {
+          player.sendMessage(color("&cInvalid item id."));
+          return true;
+        }
+        removeEssenceShopItem(player, id);
+        return true;
+      }
+      case "price" -> {
+        if (args.length < 4) {
+          player.sendMessage(color("&eUsage: /essenceshop config price <id> <price>"));
+          return true;
+        }
+        Integer id = parseInt(args[2]);
+        Double price = parseMoney(args[3]);
+        if (id == null || price == null) {
+          player.sendMessage(color("&cInvalid item id or price."));
+          return true;
+        }
+        setEssenceShopPrice(player, id, price);
+        return true;
+      }
+      case "list" -> {
+        listShopItems(player, essenceShopItems, "Fallen Essence Shop Items");
+        return true;
+      }
+      default -> {
+        sendEssenceShopHelp(player);
+        return true;
+      }
+    }
   }
 
   private boolean handlePayCommand(CommandSender sender, String[] args) {
@@ -317,7 +449,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return true;
     }
     if (!economy.has(player, amount)) {
-      player.sendMessage(color("&cYou need &f" + format(amount) + " " + currencyName + "&c."));
+      player.sendMessage(color("&cYou need &f" + format(amount) + " " + moneyName + "&c."));
       return true;
     }
     if (!economy.withdraw(player, amount)) {
@@ -325,8 +457,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return true;
     }
     economy.deposit(target, amount);
-    player.sendMessage(color("&aPaid &f" + target.getName() + " " + format(amount) + " " + currencyName + "&a."));
-    target.sendMessage(color("&aReceived &f" + format(amount) + " " + currencyName + " &afrom &f" + player.getName() + "&a."));
+    player.sendMessage(color("&aPaid &f" + target.getName() + " " + format(amount) + " " + moneyName + "&a."));
+    target.sendMessage(color("&aReceived &f" + format(amount) + " " + moneyName + " &afrom &f" + player.getName() + "&a."));
     return true;
   }
 
@@ -499,11 +631,18 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     if (args.length == 0) {
       sender.sendMessage(color("&e/feconomy balance <player>"));
       sender.sendMessage(color("&e/feconomy give <player> <amount>"));
+      sender.sendMessage(color("&e/feconomy take <player> <amount>"));
+      sender.sendMessage(color("&e/feconomy set <player> <amount>"));
+      sender.sendMessage(color("&e/feconomy essence balance <player>"));
+      sender.sendMessage(color("&e/feconomy essence give|take|set <player> <amount>"));
       return true;
+    }
+    if (args[0].equalsIgnoreCase("essence")) {
+      return handleAdminEssenceCommand(sender, args);
     }
     if (args[0].equalsIgnoreCase("balance") && args.length >= 2) {
       OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
-      sender.sendMessage(color("&a" + target.getName() + ": &f" + format(economy.balance(target)) + " " + currencyName));
+      sender.sendMessage(color("&a" + target.getName() + ": &f" + format(economy.balance(target)) + " " + moneyName));
       return true;
     }
     if (args[0].equalsIgnoreCase("give") && args.length >= 3) {
@@ -514,10 +653,81 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         return true;
       }
       economy.deposit(target, amount);
-      sender.sendMessage(color("&aGave &f" + format(amount) + " " + currencyName + " &ato &f" + target.getName() + "&a."));
+      sender.sendMessage(color("&aGave &f" + format(amount) + " " + moneyName + " &ato &f" + target.getName() + "&a."));
+      return true;
+    }
+    if (args[0].equalsIgnoreCase("take") && args.length >= 3) {
+      OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+      Double amount = parseMoney(args[2]);
+      if (amount == null) {
+        sender.sendMessage(color("&cInvalid amount."));
+        return true;
+      }
+      if (!economy.withdraw(target, amount)) {
+        sender.sendMessage(color("&cTarget does not have enough " + moneyName + "."));
+        return true;
+      }
+      sender.sendMessage(color("&aTook &f" + format(amount) + " " + moneyName + " &afrom &f" + target.getName() + "&a."));
+      return true;
+    }
+    if (args[0].equalsIgnoreCase("set") && args.length >= 3) {
+      OfflinePlayer target = Bukkit.getOfflinePlayer(args[1]);
+      Double amount = parseMoneyAllowZero(args[2]);
+      if (amount == null) {
+        sender.sendMessage(color("&cInvalid amount."));
+        return true;
+      }
+      if (economy instanceof InternalEconomyBridge internal) {
+        internal.setBalance(target, amount);
+        sender.sendMessage(color("&aSet &f" + target.getName() + " &ato &f" + format(amount) + " " + moneyName + "&a."));
+      } else {
+        sender.sendMessage(color("&cInternal money backend is unavailable."));
+      }
       return true;
     }
     sender.sendMessage(color("&cUnknown admin command."));
+    return true;
+  }
+
+  private boolean handleAdminEssenceCommand(CommandSender sender, String[] args) {
+    if (!essence.available()) {
+      sender.sendMessage(color("&cPlayerPoints is required for Essence commands."));
+      return true;
+    }
+    if (args.length < 3) {
+      sender.sendMessage(color("&e/feconomy essence balance <player>"));
+      sender.sendMessage(color("&e/feconomy essence give|take|set <player> <amount>"));
+      return true;
+    }
+    OfflinePlayer target = Bukkit.getOfflinePlayer(args[2]);
+    if (args[1].equalsIgnoreCase("balance")) {
+      sender.sendMessage(color("&a" + target.getName() + ": &f" + format(essence.balance(target)) + " " + essenceName));
+      return true;
+    }
+    if (args.length < 4) {
+      sender.sendMessage(color("&cAmount is required."));
+      return true;
+    }
+    Double amount = parseMoneyAllowZero(args[3]);
+    if (amount == null) {
+      sender.sendMessage(color("&cInvalid amount."));
+      return true;
+    }
+    switch (args[1].toLowerCase(Locale.ROOT)) {
+      case "give" -> {
+        essence.deposit(target, amount);
+        sender.sendMessage(color("&aGave &f" + format(amount) + " " + essenceName + " &ato &f" + target.getName() + "&a."));
+      }
+      case "take" -> {
+        if (!essence.withdraw(target, amount)) sender.sendMessage(color("&cTarget does not have enough " + essenceName + "."));
+        else sender.sendMessage(color("&aTook &f" + format(amount) + " " + essenceName + " &afrom &f" + target.getName() + "&a."));
+      }
+      case "set" -> {
+        essence.set(target, amount);
+        sender.sendMessage(color("&aSet &f" + target.getName() + " &ato &f" + format(amount) + " " + essenceName + "&a."));
+      }
+      default -> sender.sendMessage(color("&cUnknown Essence admin command."));
+    }
     return true;
   }
 
@@ -544,7 +754,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     AuctionListing listing = new AuctionListing(nextAuctionId++, seller.getUniqueId(), seller.getName(), listed, price, System.currentTimeMillis());
     auctions.put(listing.id, listing);
     saveAuctions();
-    seller.sendMessage(color("&aListed &f" + listed.getAmount() + "x " + niceMaterial(listed.getType()) + " &afor &f" + format(price) + " " + currencyName + "&a."));
+    seller.sendMessage(color("&aListed &f" + listed.getAmount() + "x " + niceMaterial(listed.getType()) + " &afor &f" + format(price) + " " + moneyName + "&a."));
   }
 
   private void cancelAuction(Player player, int id) {
@@ -574,7 +784,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return;
     }
     if (!economy.has(buyer, listing.price)) {
-      buyer.sendMessage(color("&cYou need &f" + format(listing.price) + " " + currencyName + "&c."));
+      buyer.sendMessage(color("&cYou need &f" + format(listing.price) + " " + moneyName + "&c."));
       return;
     }
     if (!economy.withdraw(buyer, listing.price)) {
@@ -586,9 +796,9 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     auctions.remove(id);
     giveOrDrop(buyer, listing.item.clone());
     saveAuctions();
-    buyer.sendMessage(color("&aPurchased auction #" + id + " for &f" + format(listing.price) + " " + currencyName + "&a."));
+    buyer.sendMessage(color("&aPurchased auction #" + id + " for &f" + format(listing.price) + " " + moneyName + "&a."));
     if (seller.isOnline() && seller.getPlayer() != null) {
-      seller.getPlayer().sendMessage(color("&aYour auction #" + id + " sold for &f" + format(listing.price) + " " + currencyName + "&a."));
+      seller.getPlayer().sendMessage(color("&aYour auction #" + id + " sold for &f" + format(listing.price) + " " + moneyName + "&a."));
     }
   }
 
@@ -613,7 +823,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
     double total = unitPrice * amount;
     if (!economy.has(creator, total)) {
-      creator.sendMessage(color("&cYou need &f" + format(total) + " " + currencyName + " &cto fund this order."));
+      creator.sendMessage(color("&cYou need &f" + format(total) + " " + moneyName + " &cto fund this order."));
       return;
     }
     if (!economy.withdraw(creator, total)) {
@@ -623,7 +833,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     BuyOrder order = new BuyOrder(nextOrderId++, creator.getUniqueId(), creator.getName(), hand.getType(), unitPrice, amount, amount, System.currentTimeMillis());
     orders.put(order.id, order);
     saveOrders();
-    creator.sendMessage(color("&aCreated order #" + order.id + " for &f" + amount + "x " + niceMaterial(order.material) + " &aat &f" + format(unitPrice) + " " + currencyName + " each&a."));
+    creator.sendMessage(color("&aCreated order #" + order.id + " for &f" + amount + "x " + niceMaterial(order.material) + " &aat &f" + format(unitPrice) + " " + moneyName + " each&a."));
   }
 
   private void fillOrder(Player seller, int id, int requestedAmount) {
@@ -653,7 +863,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     order.remaining -= fill;
     if (order.remaining <= 0) orders.remove(id);
     saveOrders();
-    seller.sendMessage(color("&aFilled &f" + fill + "x " + niceMaterial(order.material) + " &afor &f" + format(payout) + " " + currencyName + "&a."));
+    seller.sendMessage(color("&aFilled &f" + fill + "x " + niceMaterial(order.material) + " &afor &f" + format(payout) + " " + moneyName + "&a."));
     OfflinePlayer creator = Bukkit.getOfflinePlayer(order.creator);
     if (creator.isOnline() && creator.getPlayer() != null) {
       creator.getPlayer().sendMessage(color("&aYour order #" + id + " received &f" + fill + "x " + niceMaterial(order.material) + "&a."));
@@ -674,10 +884,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     double refund = order.remaining * order.unitPrice;
     economy.deposit(Bukkit.getOfflinePlayer(order.creator), refund);
     saveOrders();
-    player.sendMessage(color("&aOrder #" + id + " cancelled. Refunded &f" + format(refund) + " " + currencyName + "&a."));
+    player.sendMessage(color("&aOrder #" + id + " cancelled. Refunded &f" + format(refund) + " " + moneyName + "&a."));
   }
 
-  private void addBuyShopItem(Player player, double price) {
+  private void addBuyShopItem(Player player, double price, String category, ShopCurrency currency, Map<Integer, BuyShopItem> targetShop, boolean moneyShop) {
     double min = getConfig().getDouble("buy.min-price", 1);
     double max = getConfig().getDouble("buy.max-price", 1_000_000);
     if (price < min || price > max) {
@@ -685,7 +895,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return;
     }
     int maxItems = getConfig().getInt("buy.max-items", 500);
-    if (buyShopItems.size() >= maxItems) {
+    if (targetShop.size() >= maxItems) {
       player.sendMessage(color("&cBuy shop item limit reached."));
       return;
     }
@@ -695,10 +905,12 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return;
     }
     ItemStack item = hand.clone();
-    BuyShopItem shopItem = new BuyShopItem(nextBuyShopId++, item, price, System.currentTimeMillis());
-    buyShopItems.put(shopItem.id, shopItem);
-    saveBuyShop();
-    player.sendMessage(color("&aAdded buy item #&f" + shopItem.id + " &a(&f" + item.getAmount() + "x " + niceMaterial(item.getType()) + "&a) for &f" + format(price) + " " + currencyName + "&a."));
+    int id = moneyShop ? nextBuyShopId++ : nextEssenceShopId++;
+    BuyShopItem shopItem = new BuyShopItem(id, item, price, System.currentTimeMillis(), canonicalCategory(category), currency);
+    targetShop.put(shopItem.id, shopItem);
+    if (moneyShop) saveBuyShop();
+    else saveEssenceShop();
+    player.sendMessage(color("&aAdded shop item #&f" + shopItem.id + " &a(&f" + item.getAmount() + "x " + niceMaterial(item.getType()) + "&a) for &f" + format(price) + " " + currencyLabel(currency) + "&a."));
   }
 
   private void removeBuyShopItem(Player player, int id) {
@@ -725,39 +937,64 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
     item.price = price;
     saveBuyShop();
-    player.sendMessage(color("&aSet buy item #&f" + id + " &aprice to &f" + format(price) + " " + currencyName + "&a."));
+    player.sendMessage(color("&aSet buy item #&f" + id + " &aprice to &f" + format(price) + " " + moneyName + "&a."));
+  }
+
+  private void removeEssenceShopItem(Player player, int id) {
+    BuyShopItem removed = essenceShopItems.remove(id);
+    if (removed == null) {
+      player.sendMessage(color("&cEssence shop item not found."));
+      return;
+    }
+    saveEssenceShop();
+    player.sendMessage(color("&aRemoved Essence shop item #&f" + id + "&a."));
+  }
+
+  private void setEssenceShopPrice(Player player, int id, double price) {
+    BuyShopItem item = essenceShopItems.get(id);
+    if (item == null) {
+      player.sendMessage(color("&cEssence shop item not found."));
+      return;
+    }
+    item.price = price;
+    saveEssenceShop();
+    player.sendMessage(color("&aSet Essence shop item #&f" + id + " &aprice to &f" + format(price) + " " + essenceName + "&a."));
   }
 
   private void listBuyShopItems(Player player) {
-    if (buyShopItems.isEmpty()) {
-      player.sendMessage(color("&eBuy shop is empty."));
+    listShopItems(player, buyShopItems, "Fallen Buy Shop Items");
+  }
+
+  private void listShopItems(Player player, Map<Integer, BuyShopItem> items, String title) {
+    if (items.isEmpty()) {
+      player.sendMessage(color("&eShop is empty."));
       return;
     }
-    player.sendMessage(color("&6Fallen Buy Shop Items"));
-    buyShopItems.values().stream().limit(25).forEach(item -> player.sendMessage(color(
-      "&e#" + item.id + " &7- &f" + item.item.getAmount() + "x " + niceMaterial(item.item.getType()) + " &7- &b" + format(item.price) + " " + currencyName
+    player.sendMessage(color("&6" + title));
+    items.values().stream().limit(25).forEach(item -> player.sendMessage(color(
+      "&e#" + item.id + " &7- &f" + item.item.getAmount() + "x " + displayItemName(item.item) + " &7- &b" + format(item.price) + " " + currencyLabel(item.currency) + " &8(" + item.category + ")"
     )));
-    if (buyShopItems.size() > 25) {
-      player.sendMessage(color("&7Showing 25/" + buyShopItems.size() + " items. Use /buy config for GUI pages."));
+    if (items.size() > 25) {
+      player.sendMessage(color("&7Showing 25/" + items.size() + " items. Use the config GUI for pages."));
     }
   }
 
-  private void buyShopItem(Player buyer, int id) {
-    BuyShopItem shopItem = buyShopItems.get(id);
+  private void buyShopItem(Player buyer, int id, Map<Integer, BuyShopItem> sourceShop) {
+    BuyShopItem shopItem = sourceShop.get(id);
     if (shopItem == null) {
       buyer.sendMessage(color("&cThis buy item is no longer available."));
       return;
     }
-    if (!economy.has(buyer, shopItem.price)) {
-      buyer.sendMessage(color("&cYou need &f" + format(shopItem.price) + " " + currencyName + "&c."));
+    if (!hasCurrency(buyer, shopItem.currency, shopItem.price)) {
+      buyer.sendMessage(color("&cYou need &f" + format(shopItem.price) + " " + currencyLabel(shopItem.currency) + "&c."));
       return;
     }
-    if (!economy.withdraw(buyer, shopItem.price)) {
+    if (!withdrawCurrency(buyer, shopItem.currency, shopItem.price)) {
       buyer.sendMessage(color("&cPayment failed."));
       return;
     }
     giveOrDrop(buyer, shopItem.item.clone());
-    buyer.sendMessage(color("&aBought &f" + shopItem.item.getAmount() + "x " + niceMaterial(shopItem.item.getType()) + " &afor &f" + format(shopItem.price) + " " + currencyName + "&a."));
+    buyer.sendMessage(color("&aBought &f" + shopItem.item.getAmount() + "x " + displayItemName(shopItem.item) + " &afor &f" + format(shopItem.price) + " " + currencyLabel(shopItem.currency) + "&a."));
   }
 
   private void sellHand(Player player) {
@@ -775,7 +1012,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     double total = unitValue * amount;
     player.getInventory().setItemInMainHand(null);
     economy.deposit(player, total);
-    player.sendMessage(color("&aSold &f" + amount + "x " + niceMaterial(hand.getType()) + " &afor &f" + format(total) + " " + currencyName + "&a."));
+    player.sendMessage(color("&aSold &f" + amount + "x " + niceMaterial(hand.getType()) + " &afor &f" + format(total) + " " + moneyName + "&a."));
   }
 
   private void sellAll(Player player) {
@@ -799,7 +1036,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
     player.getInventory().setStorageContents(contents);
     economy.deposit(player, total);
-    player.sendMessage(color("&aSold &f" + items + " items &7(" + stacks + " stacks)&a for &f" + format(total) + " " + currencyName + "&a."));
+    player.sendMessage(color("&aSold &f" + items + " items &7(" + stacks + " stacks)&a for &f" + format(total) + " " + moneyName + "&a."));
   }
 
   private void sellAllMaterial(Player player, Material material) {
@@ -820,15 +1057,68 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     player.getInventory().setStorageContents(contents);
     double total = amount * unitValue;
     economy.deposit(player, total);
-    player.sendMessage(color("&aSold &f" + amount + "x " + niceMaterial(material) + " &afor &f" + format(total) + " " + currencyName + "&a."));
+    player.sendMessage(color("&aSold &f" + amount + "x " + niceMaterial(material) + " &afor &f" + format(total) + " " + moneyName + "&a."));
   }
 
   private void openBuyMenu(Player player, int page) {
-    List<BuyShopItem> sorted = sortedBuyShop(player);
+    openShopCategories(player);
+  }
+
+  private void openShopCategories(Player player) {
+    PagedHolder holder = new PagedHolder(MenuType.BUY_CATEGORIES, 0);
+    Inventory inv = Bukkit.createInventory(holder, 27, color("&8Fallen Shop"));
+    holder.inventory = inv;
+    addCategoryButton(inv, holder, 10, "End", Material.END_STONE, buyShopItems);
+    addCategoryButton(inv, holder, 12, "Nether", Material.NETHERRACK, buyShopItems);
+    addCategoryButton(inv, holder, 14, "Gear", Material.TOTEM_OF_UNDYING, buyShopItems);
+    addCategoryButton(inv, holder, 16, "Food", Material.COOKED_BEEF, buyShopItems);
+    inv.setItem(22, navItem(Material.SPAWNER, "&dEssence Shop"));
+    holder.categorySlots.put(22, "ESSENCE_SHOP");
+    player.openInventory(inv);
+  }
+
+  private void addCategoryButton(Inventory inv, PagedHolder holder, int slot, String category, Material icon, Map<Integer, BuyShopItem> source) {
+    long count = source.values().stream().filter(item -> item.category.equalsIgnoreCase(category)).count();
+    ItemStack button = navItem(icon, "&b" + category);
+    ItemMeta meta = button.getItemMeta();
+    if (meta != null) {
+      meta.setLore(List.of(
+        color("&7Items: &f" + count),
+        color("&eClick to open")
+      ));
+      button.setItemMeta(meta);
+    }
+    inv.setItem(slot, button);
+    holder.categorySlots.put(slot, category);
+  }
+
+  private void openBuyMenu(Player player, String category, int page) {
+    String normalizedCategory = canonicalCategory(category);
+    List<BuyShopItem> sorted = sortedShop(player, buyShopItems, normalizedCategory);
     int maxPage = Math.max(0, (sorted.size() - 1) / 45);
     page = Math.max(0, Math.min(page, maxPage));
-    PagedHolder holder = new PagedHolder(MenuType.BUY, page);
-    Inventory inv = Bukkit.createInventory(holder, 54, color("&8Fallen Buy &7" + (page + 1) + "/" + (maxPage + 1)));
+    PagedHolder holder = new PagedHolder(MenuType.BUY, page, normalizedCategory);
+    Inventory inv = Bukkit.createInventory(holder, 54, color("&8" + normalizedCategory + " Shop &7" + (page + 1) + "/" + (maxPage + 1)));
+    holder.inventory = inv;
+    int start = page * 45;
+    for (int slot = 0; slot < 45 && start + slot < sorted.size(); slot++) {
+      BuyShopItem item = sorted.get(start + slot);
+      holder.slotIds.put(slot, item.id);
+      inv.setItem(slot, buyIcon(item, false));
+    }
+    inv.setItem(45, navItem(Material.ARROW, "&ePrevious Page"));
+    inv.setItem(49, navItem(Material.HOPPER, "&bSort: &f" + buySort(player).id));
+    inv.setItem(53, navItem(Material.ARROW, "&eNext Page"));
+    player.openInventory(inv);
+  }
+
+  private void openEssenceShopMenu(Player player, String category, int page) {
+    String normalizedCategory = canonicalCategory(category);
+    List<BuyShopItem> sorted = sortedShop(player, essenceShopItems, normalizedCategory);
+    int maxPage = Math.max(0, (sorted.size() - 1) / 45);
+    page = Math.max(0, Math.min(page, maxPage));
+    PagedHolder holder = new PagedHolder(MenuType.ESSENCE_SHOP, page, normalizedCategory);
+    Inventory inv = Bukkit.createInventory(holder, 54, color("&8Essence " + normalizedCategory + " &7" + (page + 1) + "/" + (maxPage + 1)));
     holder.inventory = inv;
     int start = page * 45;
     for (int slot = 0; slot < 45 && start + slot < sorted.size(); slot++) {
@@ -883,7 +1173,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
     ItemStack button;
     if (total > 0) {
-      button = navItem(Material.EMERALD, "&aSell &7(" + format(total) + " " + currencyName + ")");
+      button = navItem(Material.EMERALD, "&aSell &7(" + format(total) + " " + moneyName + ")");
     } else {
       button = navItem(Material.GRAY_STAINED_GLASS_PANE, "&7Place sellable items above");
     }
@@ -905,12 +1195,12 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return;
     }
     economy.deposit(player, total);
-    player.sendMessage(color("&aSold for &f" + format(total) + " " + currencyName + "&a."));
+    player.sendMessage(color("&aSold for &f" + format(total) + " " + moneyName + "&a."));
     updateSellChestButton(inv);
   }
 
   private void openBuyConfigMenu(Player player, int page) {
-    List<BuyShopItem> sorted = sortedBuyShop(player);
+    List<BuyShopItem> sorted = sortedShop(player, buyShopItems, null);
     int maxPage = Math.max(0, (sorted.size() - 1) / 45);
     page = Math.max(0, Math.min(page, maxPage));
     PagedHolder holder = new PagedHolder(MenuType.BUY_CONFIG, page);
@@ -923,7 +1213,26 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       inv.setItem(slot, buyIcon(item, true));
     }
     inv.setItem(45, navItem(Material.ARROW, "&ePrevious Page"));
-    inv.setItem(49, navItem(Material.BOOK, "&bUse /buy config add <price>"));
+    inv.setItem(49, navItem(Material.BOOK, "&bUse /buy config add <price> <category> [money|essence]"));
+    inv.setItem(53, navItem(Material.ARROW, "&eNext Page"));
+    player.openInventory(inv);
+  }
+
+  private void openEssenceShopConfigMenu(Player player, int page) {
+    List<BuyShopItem> sorted = sortedShop(player, essenceShopItems, null);
+    int maxPage = Math.max(0, (sorted.size() - 1) / 45);
+    page = Math.max(0, Math.min(page, maxPage));
+    PagedHolder holder = new PagedHolder(MenuType.ESSENCE_CONFIG, page);
+    Inventory inv = Bukkit.createInventory(holder, 54, color("&8Essence Config &7" + (page + 1) + "/" + (maxPage + 1)));
+    holder.inventory = inv;
+    int start = page * 45;
+    for (int slot = 0; slot < 45 && start + slot < sorted.size(); slot++) {
+      BuyShopItem item = sorted.get(start + slot);
+      holder.slotIds.put(slot, item.id);
+      inv.setItem(slot, buyIcon(item, true));
+    }
+    inv.setItem(45, navItem(Material.ARROW, "&ePrevious Page"));
+    inv.setItem(49, navItem(Material.BOOK, "&bUse /essenceshop config add <price> <category>"));
     inv.setItem(53, navItem(Material.ARROW, "&eNext Page"));
     player.openInventory(inv);
   }
@@ -1006,11 +1315,20 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       event.setCancelled(true);
       int slot = event.getRawSlot();
       if (slot < 0 || slot >= event.getInventory().getSize()) return;
+      if (paged.type == MenuType.BUY_CATEGORIES) {
+        String category = paged.categorySlots.get(slot);
+        if (category == null) return;
+        if (category.equals("ESSENCE_SHOP")) openEssenceShopMenu(player, "Spawners", 0);
+        else openBuyMenu(player, category, 0);
+        return;
+      }
       if (slot == 45) {
         if (paged.type == MenuType.AUCTION) openAuctionMenu(player, paged.page - 1);
         else if (paged.type == MenuType.ORDERS) openOrdersMenu(player, paged.page - 1);
         else if (paged.type == MenuType.SELL) openSellMenu(player, paged.page - 1);
-        else if (paged.type == MenuType.BUY) openBuyMenu(player, paged.page - 1);
+        else if (paged.type == MenuType.BUY) openBuyMenu(player, paged.category, paged.page - 1);
+        else if (paged.type == MenuType.ESSENCE_SHOP) openEssenceShopMenu(player, paged.category, paged.page - 1);
+        else if (paged.type == MenuType.ESSENCE_CONFIG) openEssenceShopConfigMenu(player, paged.page - 1);
         else openBuyConfigMenu(player, paged.page - 1);
         return;
       }
@@ -1018,16 +1336,19 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         if (paged.type == MenuType.AUCTION) openAuctionMenu(player, paged.page + 1);
         else if (paged.type == MenuType.ORDERS) openOrdersMenu(player, paged.page + 1);
         else if (paged.type == MenuType.SELL) openSellMenu(player, paged.page + 1);
-        else if (paged.type == MenuType.BUY) openBuyMenu(player, paged.page + 1);
+        else if (paged.type == MenuType.BUY) openBuyMenu(player, paged.category, paged.page + 1);
+        else if (paged.type == MenuType.ESSENCE_SHOP) openEssenceShopMenu(player, paged.category, paged.page + 1);
+        else if (paged.type == MenuType.ESSENCE_CONFIG) openEssenceShopConfigMenu(player, paged.page + 1);
         else openBuyConfigMenu(player, paged.page + 1);
         return;
       }
       if (slot == 49) {
-        if (paged.type == MenuType.BUY_CONFIG || paged.type == MenuType.SELL) return;
+        if (paged.type == MenuType.BUY_CONFIG || paged.type == MenuType.ESSENCE_CONFIG || paged.type == MenuType.SELL) return;
         cycleSort(player, paged.type);
         if (paged.type == MenuType.AUCTION) openAuctionMenu(player, 0);
         else if (paged.type == MenuType.ORDERS) openOrdersMenu(player, 0);
-        else openBuyMenu(player, 0);
+        else if (paged.type == MenuType.ESSENCE_SHOP) openEssenceShopMenu(player, paged.category, 0);
+        else openBuyMenu(player, paged.category, 0);
         return;
       }
       if (paged.type == MenuType.SELL) {
@@ -1040,12 +1361,21 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       Integer id = paged.slotIds.get(slot);
       if (id == null) return;
       if (paged.type == MenuType.BUY) {
-        buyShopItem(player, id);
+        buyShopItem(player, id, buyShopItems);
         int pg = paged.page;
-        Bukkit.getScheduler().runTask(this, () -> openBuyMenu(player, pg));
+        String category = paged.category;
+        Bukkit.getScheduler().runTask(this, () -> openBuyMenu(player, category, pg));
       } else if (paged.type == MenuType.BUY_CONFIG) {
         removeBuyShopItem(player, id);
         openBuyConfigMenu(player, paged.page);
+      } else if (paged.type == MenuType.ESSENCE_SHOP) {
+        buyShopItem(player, id, essenceShopItems);
+        int pg = paged.page;
+        String category = paged.category;
+        Bukkit.getScheduler().runTask(this, () -> openEssenceShopMenu(player, category, pg));
+      } else if (paged.type == MenuType.ESSENCE_CONFIG) {
+        removeEssenceShopItem(player, id);
+        openEssenceShopConfigMenu(player, paged.page);
       } else if (paged.type == MenuType.AUCTION) {
         if (getConfig().getBoolean("auction.confirm-purchase", true)) openConfirm(player, id);
         else buyAuction(player, id);
@@ -1107,7 +1437,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       lore.add(color("&8&m----------------"));
       lore.add(color("&7Auction ID: &f#" + listing.id));
       lore.add(color("&7Seller: &f" + listing.sellerName));
-      lore.add(color("&7Price: &b" + format(listing.price) + " " + currencyName));
+      lore.add(color("&7Price: &b" + format(listing.price) + " " + moneyName));
       lore.add(color("&eClick to buy"));
       meta.setLore(lore);
       meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
@@ -1123,7 +1453,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
       lore.add(color("&8&m----------------"));
       lore.add(color("&7Buy ID: &f#" + shopItem.id));
-      lore.add(color("&7Price: &b" + format(shopItem.price) + " " + currencyName));
+      lore.add(color("&7Category: &f" + shopItem.category));
+      lore.add(color("&7Price: &b" + format(shopItem.price) + " " + currencyLabel(shopItem.currency)));
       if (configView) {
         lore.add(color("&cClick to remove"));
         lore.add(color("&7Set price: &f/buy config price " + shopItem.id + " <price>"));
@@ -1143,7 +1474,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     if (meta != null) {
       meta.setDisplayName(color("&f" + niceMaterial(material)));
       meta.setLore(List.of(
-        color("&7Value: &a" + format(value) + " " + currencyName),
+        color("&7Value: &a" + format(value) + " " + moneyName),
         color("&eClick to sell all matching items"),
         color("&8Armor and offhand are not touched")
       ));
@@ -1162,8 +1493,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         color("&7Order ID: &f#" + order.id),
         color("&7Buyer: &f" + order.creatorName),
         color("&7Remaining: &f" + order.remaining + "/" + order.originalAmount),
-        color("&7Unit price: &b" + format(order.unitPrice) + " " + currencyName),
-        color("&7Total left: &b" + format(order.unitPrice * order.remaining) + " " + currencyName),
+        color("&7Unit price: &b" + format(order.unitPrice) + " " + moneyName),
+        color("&7Total left: &b" + format(order.unitPrice * order.remaining) + " " + moneyName),
         color("&eClick with matching item in hand to fill 1"),
         color("&eShift-click to fill up to a stack")
       ));
@@ -1186,8 +1517,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     SortMode current = switch (type) {
       case AUCTION -> auctionSort(player);
       case ORDERS -> orderSort(player);
-      case SELL -> SortMode.NEWEST;
-      case BUY, BUY_CONFIG -> buySort(player);
+      case SELL, BUY_CATEGORIES, ESSENCE_CONFIG -> SortMode.NEWEST;
+      case BUY, BUY_CONFIG, ESSENCE_SHOP -> buySort(player);
     };
     SortMode[] modes = SortMode.values();
     SortMode next = modes[(current.ordinal() + 1) % modes.length];
@@ -1196,7 +1527,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     else buySorts.put(player.getUniqueId(), next);
   }
 
-  private List<BuyShopItem> sortedBuyShop(Player player) {
+  private List<BuyShopItem> sortedShop(Player player, Map<Integer, BuyShopItem> source, String category) {
     Comparator<BuyShopItem> comparator = switch (buySort(player)) {
       case OLDEST -> Comparator.comparingLong(i -> i.createdAt);
       case PRICE_ASC -> Comparator.comparingDouble(i -> i.price);
@@ -1204,7 +1535,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       case AMOUNT -> Comparator.<BuyShopItem>comparingInt(i -> i.item.getAmount()).reversed();
       case NEWEST -> Comparator.<BuyShopItem>comparingLong(i -> i.createdAt).reversed();
     };
-    return buyShopItems.values().stream().sorted(comparator).collect(Collectors.toList());
+    return source.values().stream()
+      .filter(item -> category == null || item.category.equalsIgnoreCase(category))
+      .sorted(comparator)
+      .collect(Collectors.toList());
   }
 
   private List<Map.Entry<Material, Double>> sortedSellValues() {
@@ -1251,6 +1585,31 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     return sellValues.getOrDefault(material, 0.0);
   }
 
+  private boolean hasCurrency(OfflinePlayer player, ShopCurrency currency, double amount) {
+    return currency == ShopCurrency.ESSENCE ? essence.available() && essence.has(player, amount) : economy.has(player, amount);
+  }
+
+  private boolean withdrawCurrency(OfflinePlayer player, ShopCurrency currency, double amount) {
+    return currency == ShopCurrency.ESSENCE ? essence.available() && essence.withdraw(player, amount) : economy.withdraw(player, amount);
+  }
+
+  private String currencyLabel(ShopCurrency currency) {
+    return currency == ShopCurrency.ESSENCE ? essenceName : moneyName;
+  }
+
+  private String canonicalCategory(String raw) {
+    if (raw == null || raw.isBlank()) return "Misc";
+    return titleCase(raw.replace('-', '_').replace(' ', '_'));
+  }
+
+  private String displayItemName(ItemStack item) {
+    if (item.hasItemMeta()) {
+      ItemMeta meta = item.getItemMeta();
+      if (meta != null && meta.hasDisplayName()) return ChatColor.stripColor(meta.getDisplayName());
+    }
+    return niceMaterial(item.getType());
+  }
+
   private SortMode defaultSort(String path) {
     SortMode sort = SortMode.from(getConfig().getString(path, "NEWEST"));
     return sort == null ? SortMode.NEWEST : sort;
@@ -1263,10 +1622,19 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private void loadBuyShop() {
     buyShopItems.clear();
-    FileConfiguration config = YamlConfiguration.loadConfiguration(buyShopFile);
-    nextBuyShopId = Math.max(1, config.getInt("next-id", 1));
+    nextBuyShopId = loadShopFile(buyShopFile, buyShopItems, ShopCurrency.MONEY);
+  }
+
+  private void loadEssenceShop() {
+    essenceShopItems.clear();
+    nextEssenceShopId = loadShopFile(essenceShopFile, essenceShopItems, ShopCurrency.ESSENCE);
+  }
+
+  private int loadShopFile(File file, Map<Integer, BuyShopItem> target, ShopCurrency defaultCurrency) {
+    FileConfiguration config = YamlConfiguration.loadConfiguration(file);
+    int nextId = Math.max(1, config.getInt("next-id", 1));
     ConfigurationSection section = config.getConfigurationSection("items");
-    if (section == null) return;
+    if (section == null) return nextId;
     for (String key : section.getKeys(false)) {
       ConfigurationSection row = section.getConfigurationSection(key);
       if (row == null) continue;
@@ -1274,14 +1642,19 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       if (item == null || item.getType().isAir()) continue;
       Integer parsedId = parseInt(key);
       int id = parsedId == null ? row.getInt("id") : parsedId;
-      buyShopItems.put(id, new BuyShopItem(
+      ShopCurrency currency = ShopCurrency.from(row.getString("currency", defaultCurrency.name()));
+      if (currency == null) currency = defaultCurrency;
+      target.put(id, new BuyShopItem(
         id,
         item,
         row.getDouble("price"),
-        row.getLong("created-at")
+        row.getLong("created-at"),
+        canonicalCategory(row.getString("category", defaultCurrency == ShopCurrency.ESSENCE ? "Spawners" : "Misc")),
+        currency
       ));
-      nextBuyShopId = Math.max(nextBuyShopId, id + 1);
+      nextId = Math.max(nextId, id + 1);
     }
+    return nextId;
   }
 
   private void loadSellValues() {
@@ -1298,15 +1671,25 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   }
 
   private void saveBuyShop() {
+    saveShopFile(buyShopFile, buyShopItems, nextBuyShopId);
+  }
+
+  private void saveEssenceShop() {
+    saveShopFile(essenceShopFile, essenceShopItems, nextEssenceShopId);
+  }
+
+  private void saveShopFile(File file, Map<Integer, BuyShopItem> items, int nextId) {
     YamlConfiguration config = new YamlConfiguration();
-    config.set("next-id", nextBuyShopId);
-    for (BuyShopItem item : buyShopItems.values()) {
+    config.set("next-id", nextId);
+    for (BuyShopItem item : items.values()) {
       String path = "items." + item.id + ".";
+      config.set(path + "category", item.category);
+      config.set(path + "currency", item.currency.name());
       config.set(path + "item", item.item);
       config.set(path + "price", item.price);
       config.set(path + "created-at", item.createdAt);
     }
-    saveYaml(config, buyShopFile);
+    saveYaml(config, file);
   }
 
   private ItemStack loadConfiguredItem(ConfigurationSection row) {
@@ -1315,9 +1698,45 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       Material material = Material.matchMaterial(itemSection.getString("material", ""));
       if (material == null || material.isAir()) return null;
       int amount = Math.max(1, itemSection.getInt("amount", 1));
-      return new ItemStack(material, amount);
+      ItemStack item = new ItemStack(material, amount);
+      String name = itemSection.getString("name");
+      if (material == Material.SPAWNER && itemSection.isString("entity-type")) {
+        applySpawnerType(item, itemSection.getString("entity-type"));
+      }
+      if (item.getItemMeta() instanceof PotionMeta potionMeta && itemSection.isString("potion-effect")) {
+        PotionEffectType type = PotionEffectType.getByName(itemSection.getString("potion-effect", ""));
+        if (type != null) {
+          potionMeta.addCustomEffect(new PotionEffect(type, 20 * 120, 0), true);
+          potionMeta.addItemFlags(ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+          item.setItemMeta(potionMeta);
+        }
+      }
+      if (name != null && !name.isBlank()) {
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+          meta.setDisplayName(color("&f" + name));
+          item.setItemMeta(meta);
+        }
+      }
+      return item;
     }
     return row.getItemStack("item");
+  }
+
+  private void applySpawnerType(ItemStack item, String entityTypeName) {
+    EntityType entityType;
+    try {
+      entityType = EntityType.valueOf(entityTypeName.toUpperCase(Locale.ROOT));
+    } catch (IllegalArgumentException exception) {
+      getLogger().warning("Unknown spawner entity type in shop config: " + entityTypeName);
+      return;
+    }
+    if (!(item.getItemMeta() instanceof BlockStateMeta meta)) return;
+    if (meta.getBlockState() instanceof CreatureSpawner spawner) {
+      spawner.setSpawnedType(entityType);
+      meta.setBlockState(spawner);
+      item.setItemMeta(meta);
+    }
   }
 
   private void loadAuctions() {
@@ -1424,12 +1843,13 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private void sendBuyHelp(Player player) {
     player.sendMessage(color("&6Fallen Buy"));
-    player.sendMessage(color("&e/shop &7- open buy shop"));
-    player.sendMessage(color("&e/buy &7- open buy shop"));
+    player.sendMessage(color("&e/shop &7- open buy shop categories"));
+    player.sendMessage(color("&e/buy &7- open buy shop categories"));
+    player.sendMessage(color("&e/buy <end|nether|gear|food> &7- open category"));
     player.sendMessage(color("&e/buy sort <newest|oldest|price_asc|price_desc|amount>"));
     if (player.hasPermission("falleneconomy.buy.config")) {
       player.sendMessage(color("&e/buy config &7- open buy shop config"));
-      player.sendMessage(color("&e/buy config add <price> &7- add held item stack"));
+      player.sendMessage(color("&e/buy config add <price> <category> [money|essence] &7- add held item stack"));
     }
   }
 
@@ -1444,10 +1864,23 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private void sendBuyConfigHelp(Player player) {
     player.sendMessage(color("&6Fallen Buy Config"));
     player.sendMessage(color("&e/buy config &7- open config GUI"));
-    player.sendMessage(color("&e/buy config add <price> &7- add held item stack"));
+    player.sendMessage(color("&e/buy config add <price> <category> [money|essence] &7- add held item stack"));
     player.sendMessage(color("&e/buy config remove <id> &7- remove shop item"));
     player.sendMessage(color("&e/buy config price <id> <price> &7- set price"));
     player.sendMessage(color("&e/buy config list &7- list shop items"));
+  }
+
+  private void sendEssenceShopHelp(Player player) {
+    player.sendMessage(color("&6Fallen Essence Shop"));
+    player.sendMessage(color("&e/essence &7- show PlayerPoints Essence"));
+    player.sendMessage(color("&e/essenceshop &7- open Essence shop"));
+    player.sendMessage(color("&e/essenceshop <category> &7- open category"));
+    if (player.hasPermission("falleneconomy.essenceshop.config")) {
+      player.sendMessage(color("&e/essenceshop config &7- open config GUI"));
+      player.sendMessage(color("&e/essenceshop config add <price> <category> &7- add held item stack"));
+      player.sendMessage(color("&e/essenceshop config remove <id>"));
+      player.sendMessage(color("&e/essenceshop config price <id> <price>"));
+    }
   }
 
   private void sendOrderHelp(Player player) {
@@ -1462,9 +1895,16 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
     String name = command.getName().toLowerCase(Locale.ROOT);
     if (name.equals("shop") || name.equals("buy")) {
-      if (args.length == 1) return filter(List.of("config", "sort", "help"), args[0]);
+      if (args.length == 1) return filter(List.of("End", "Nether", "Gear", "Food", "config", "sort", "help"), args[0]);
       if (args.length == 2 && args[0].equalsIgnoreCase("sort")) return filter(SortMode.ids(), args[1]);
       if (args.length == 2 && args[0].equalsIgnoreCase("config")) return filter(List.of("add", "remove", "delete", "price", "list", "help"), args[1]);
+      if (args.length == 4 && args[0].equalsIgnoreCase("config") && args[1].equalsIgnoreCase("add")) return filter(List.of("End", "Nether", "Gear", "Food", "Spawners"), args[3]);
+      if (args.length == 5 && args[0].equalsIgnoreCase("config") && args[1].equalsIgnoreCase("add")) return filter(List.of("money", "essence"), args[4]);
+    }
+    if (name.equals("essenceshop")) {
+      if (args.length == 1) return filter(List.of("Spawners", "config", "help"), args[0]);
+      if (args.length == 2 && args[0].equalsIgnoreCase("config")) return filter(List.of("add", "remove", "delete", "price", "list", "help"), args[1]);
+      if (args.length == 4 && args[0].equalsIgnoreCase("config") && args[1].equalsIgnoreCase("add")) return filter(List.of("Spawners", "Keys"), args[3]);
     }
     if (name.equals("sell") && args.length == 1) return filter(List.of("hand", "all", "values", "help"), args[0]);
     if (name.equals("ah")) {
@@ -1481,7 +1921,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         .filter(playerName -> playerName.toLowerCase(Locale.ROOT).startsWith(args[0].toLowerCase(Locale.ROOT)))
         .toList();
     }
-    if (name.equals("feconomy") && args.length == 1) return filter(List.of("balance", "give"), args[0]);
+    if (name.equals("feconomy")) {
+      if (args.length == 1) return filter(List.of("balance", "give", "take", "set", "essence"), args[0]);
+      if (args.length == 2 && args[0].equalsIgnoreCase("essence")) return filter(List.of("balance", "give", "take", "set"), args[1]);
+    }
     return List.of();
   }
 
@@ -1522,6 +1965,15 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
   }
 
+  private static Double parseMoneyAllowZero(String value) {
+    try {
+      double parsed = Double.parseDouble(value);
+      return Double.isFinite(parsed) && parsed >= 0 ? parsed : null;
+    } catch (NumberFormatException exception) {
+      return null;
+    }
+  }
+
   private static Integer parseInt(String value) {
     try {
       return Integer.parseInt(value);
@@ -1535,12 +1987,16 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     private final ItemStack item;
     private double price;
     private final long createdAt;
+    private final String category;
+    private final ShopCurrency currency;
 
-    private BuyShopItem(int id, ItemStack item, double price, long createdAt) {
+    private BuyShopItem(int id, ItemStack item, double price, long createdAt, String category, ShopCurrency currency) {
       this.id = id;
       this.item = item;
       this.price = price;
       this.createdAt = createdAt;
+      this.category = category;
+      this.currency = currency;
     }
   }
 
@@ -1571,11 +2027,29 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private record ConfirmData(int auctionId) {}
 
   private enum MenuType {
+    BUY_CATEGORIES,
     BUY,
     BUY_CONFIG,
+    ESSENCE_SHOP,
+    ESSENCE_CONFIG,
     AUCTION,
     ORDERS,
     SELL
+  }
+
+  private enum ShopCurrency {
+    MONEY,
+    ESSENCE;
+
+    private static ShopCurrency from(String raw) {
+      if (raw == null) return null;
+      String normalized = raw.trim().toUpperCase(Locale.ROOT);
+      if (normalized.equals("$")) return MONEY;
+      for (ShopCurrency currency : values()) {
+        if (currency.name().equals(normalized)) return currency;
+      }
+      return null;
+    }
   }
 
   private enum SortMode {
@@ -1610,13 +2084,20 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private static final class PagedHolder implements InventoryHolder {
     private final MenuType type;
     private final int page;
+    private final String category;
     private final Map<Integer, Integer> slotIds = new HashMap<>();
     private final Map<Integer, Material> materialSlots = new HashMap<>();
+    private final Map<Integer, String> categorySlots = new HashMap<>();
     private Inventory inventory;
 
     private PagedHolder(MenuType type, int page) {
+      this(type, page, null);
+    }
+
+    private PagedHolder(MenuType type, int page, String category) {
       this.type = type;
       this.page = page;
+      this.category = category;
     }
 
     @Override
@@ -1648,6 +2129,95 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
   }
 
+  private static final class PlayerPointsEssenceBridge {
+    private final FallenEconomyPlugin plugin;
+    private final Object api;
+    private final Method lookMethod;
+    private final Method giveMethod;
+    private final Method takeMethod;
+    private final Method setMethod;
+
+    private PlayerPointsEssenceBridge(FallenEconomyPlugin plugin, Object api, Method lookMethod, Method giveMethod, Method takeMethod, Method setMethod) {
+      this.plugin = plugin;
+      this.api = api;
+      this.lookMethod = lookMethod;
+      this.giveMethod = giveMethod;
+      this.takeMethod = takeMethod;
+      this.setMethod = setMethod;
+    }
+
+    private static PlayerPointsEssenceBridge create(FallenEconomyPlugin plugin) {
+      if (!plugin.getConfig().getBoolean("essence.enabled", true)) {
+        plugin.getLogger().info("Essence is disabled in config.yml.");
+        return unavailable(plugin);
+      }
+      org.bukkit.plugin.Plugin playerPoints = Bukkit.getPluginManager().getPlugin("PlayerPoints");
+      if (playerPoints == null || !playerPoints.isEnabled()) {
+        plugin.getLogger().info("PlayerPoints not found. Essence shop and Essence commands will be unavailable.");
+        return unavailable(plugin);
+      }
+      try {
+        Object api = playerPoints.getClass().getMethod("getAPI").invoke(playerPoints);
+        Class<?> apiClass = api.getClass();
+        Method look = apiClass.getMethod("look", UUID.class);
+        Method give = apiClass.getMethod("give", UUID.class, int.class);
+        Method take = apiClass.getMethod("take", UUID.class, int.class);
+        Method set = apiClass.getMethod("set", UUID.class, int.class);
+        plugin.getLogger().info("Hooked PlayerPoints for Essence.");
+        return new PlayerPointsEssenceBridge(plugin, api, look, give, take, set);
+      } catch (Exception exception) {
+        plugin.getLogger().warning("Could not hook PlayerPoints: " + exception.getMessage());
+        return unavailable(plugin);
+      }
+    }
+
+    private static PlayerPointsEssenceBridge unavailable(FallenEconomyPlugin plugin) {
+      return new PlayerPointsEssenceBridge(plugin, null, null, null, null, null);
+    }
+
+    private boolean available() {
+      return api != null;
+    }
+
+    private double balance(OfflinePlayer player) {
+      if (!available()) return 0;
+      try {
+        Object result = lookMethod.invoke(api, player.getUniqueId());
+        return result instanceof Number number ? number.doubleValue() : 0;
+      } catch (Exception exception) {
+        plugin.getLogger().warning("Could not read PlayerPoints balance: " + exception.getMessage());
+        return 0;
+      }
+    }
+
+    private boolean has(OfflinePlayer player, double amount) {
+      return balance(player) >= amount;
+    }
+
+    private boolean withdraw(OfflinePlayer player, double amount) {
+      if (!available() || !has(player, amount)) return false;
+      return invokeMutation(takeMethod, player, amount);
+    }
+
+    private void deposit(OfflinePlayer player, double amount) {
+      if (available()) invokeMutation(giveMethod, player, amount);
+    }
+
+    private void set(OfflinePlayer player, double amount) {
+      if (available()) invokeMutation(setMethod, player, amount);
+    }
+
+    private boolean invokeMutation(Method method, OfflinePlayer player, double amount) {
+      try {
+        Object result = method.invoke(api, player.getUniqueId(), (int) Math.round(Math.max(0, amount)));
+        return !(result instanceof Boolean bool) || bool;
+      } catch (Exception exception) {
+        plugin.getLogger().warning("Could not update PlayerPoints: " + exception.getMessage());
+        return false;
+      }
+    }
+  }
+
   private interface EconomyBridge {
     boolean has(OfflinePlayer player, double amount);
 
@@ -1658,7 +2228,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     double balance(OfflinePlayer player);
 
     static EconomyBridge create(FallenEconomyPlugin plugin) {
-      plugin.getLogger().info("Using Fallen internal Essence balances.");
+      plugin.getLogger().info("Using Fallen internal money balances.");
       return new InternalEconomyBridge(plugin);
     }
   }
@@ -1693,7 +2263,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     public double balance(OfflinePlayer player) {
       String key = player.getUniqueId().toString();
       if (!balancesConfig.contains(key)) {
-        return plugin.getConfig().getDouble("internal-economy.starting-balance", 0);
+        return plugin.getConfig().getDouble("money.starting-balance", plugin.getConfig().getDouble("internal-economy.starting-balance", 0));
       }
       return balancesConfig.getDouble(key);
     }
@@ -1720,13 +2290,13 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
 
     @SuppressWarnings({"rawtypes", "unchecked"})
-    private static VaultCompatibilityHook tryRegister(JavaPlugin plugin, EconomyBridge bridge, String currencyName) {
+    private static VaultCompatibilityHook tryRegister(JavaPlugin plugin, EconomyBridge bridge, String moneyName) {
       try {
         Class<?> economyClass = Class.forName("net.milkbowl.vault.economy.Economy");
         Object provider = Proxy.newProxyInstance(
           economyClass.getClassLoader(),
           new Class<?>[] { economyClass },
-          (proxy, method, args) -> handleVaultCall(plugin, bridge, currencyName, method, args)
+          (proxy, method, args) -> handleVaultCall(plugin, bridge, moneyName, method, args)
         );
         Bukkit.getServicesManager().register((Class) economyClass, provider, plugin, ServicePriority.Normal);
         plugin.getLogger().info("Registered Fallen Economy as a Vault economy provider.");
@@ -1745,7 +2315,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       Bukkit.getServicesManager().unregister((Class) economyClass, provider);
     }
 
-    private static Object handleVaultCall(JavaPlugin plugin, EconomyBridge bridge, String currencyName, Method method, Object[] args) throws Exception {
+    private static Object handleVaultCall(JavaPlugin plugin, EconomyBridge bridge, String moneyName, Method method, Object[] args) throws Exception {
       String name = method.getName();
       Class<?> returnType = method.getReturnType();
       if (method.getDeclaringClass() == Object.class) {
@@ -1760,8 +2330,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       if (name.equals("getName")) return "FallenEconomy";
       if (name.equals("hasBankSupport")) return false;
       if (name.equals("fractionalDigits")) return 2;
-      if (name.equals("currencyNameSingular") || name.equals("currencyNamePlural")) return currencyName;
-      if (name.equals("format")) return formatVaultAmount(args, currencyName);
+      if (name.equals("moneyNameSingular") || name.equals("moneyNamePlural")) return moneyName;
+      if (name.equals("format")) return formatVaultAmount(args, moneyName);
       if (name.equals("getBanks")) return List.of();
       if (name.equals("hasAccount") || name.equals("createPlayerAccount")) return true;
 
@@ -1807,10 +2377,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return 0;
     }
 
-    private static String formatVaultAmount(Object[] args, String currencyName) {
+    private static String formatVaultAmount(Object[] args, String moneyName) {
       double amount = vaultAmount(args);
-      if (Math.abs(amount - Math.rint(amount)) < 0.0001) return (long) Math.rint(amount) + " " + currencyName;
-      return String.format(Locale.US, "%.2f %s", amount, currencyName);
+      if (Math.abs(amount - Math.rint(amount)) < 0.0001) return (long) Math.rint(amount) + " " + moneyName;
+      return String.format(Locale.US, "%.2f %s", amount, moneyName);
     }
 
     private static Object vaultResponse(boolean success, double amount, double balance, String error) throws Exception {

@@ -1,4 +1,11 @@
-currency-name: Essence
+money:
+  name: $
+  storage-file: money.yml
+  starting-balance: 0
+essence:
+  enabled: true
+  provider: PlayerPoints
+  name: Essence
 buy:
   min-price: 1
   max-price: 1000000
@@ -19,5 +26,3 @@ orders:
   max-amount: 3456
   max-orders-per-player: 25
   default-sort: NEWEST
-internal-economy:
-  starting-balance: 0
