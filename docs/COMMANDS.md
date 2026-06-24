@@ -2,9 +2,10 @@
 
 | Command | Description |
 | --- | --- |
-| `/shop`, `/buy` | Open normal `$` shop categories. |
-| `/buy <end|nether|gear|food>` | Open a normal shop category. |
-| `/buy config add <price> <category> [money|essence]` | Add held item to the normal shop config. |
+| `/shop` | Open shop categories. |
+| `/shop <end|nether|gear|food>` | Open a normal `$` shop category. |
+| `/shop spawners` | Open the Essence-priced spawner category. |
+| `/shop config add <price> <category>` | Add held item to the normal `$` shop config. |
 | `/essence` | Show PlayerPoints Essence balance. |
 | `/essenceshop` | Open Essence shop. |
 | `/essenceshop config add <price> <category>` | Add held item to Essence shop config. |

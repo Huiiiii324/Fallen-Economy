@@ -2,7 +2,7 @@
 
 Server package for the standalone Fallen Economy plugin on Paper `1.21.11`.
 
-`FallenEconomy.jar` now handles the normal `$` economy, shop, selling, auction house, and buy orders by itself. Essence is separate and comes from PlayerPoints for `/essence`, `/essenceshop`, spawners, keys, and future bounty integration.
+`FallenEconomy.jar` now handles the normal `$` economy, shop, selling, auction house, and buy orders by itself. Essence is separate and comes from PlayerPoints for `/essence`, `/shop spawners`, `/essenceshop`, spawners, keys, and future bounty integration.
 
 ## Included
 
@@ -14,15 +14,15 @@ Server package for the standalone Fallen Economy plugin on Paper `1.21.11`.
 
 ## Currency Split
 
-- `$`: internal `money.yml`, used by `/shop`, `/sell`, `/ah`, `/order`, `/balance`, `/pay`, and Vault compatibility.
-- `Essence`: PlayerPoints-backed, used by `/essence` and `/essenceshop`.
+- `$`: internal `money.yml`, used by `/shop` End/Nether/Gear/Food, `/sell`, `/ah`, `/order`, `/balance`, `/pay`, and Vault compatibility.
+- `Essence`: PlayerPoints-backed, used by `/shop spawners`, `/essence`, and `/essenceshop`.
 
 Vault is optional and exposes only `$`. PlayerPoints is optional for server startup, but required for Essence features.
 
 ## Main Commands
 
-- `/shop`, `/buy`: normal shop categories.
-- `/essenceshop`: Essence shop, currently spawners.
+- `/shop`: normal `$` categories plus the Essence `Spawners` category.
+- `/essenceshop`: direct Essence shop access, currently spawners.
 - `/sell`, `/sell hand`, `/sell all`: sell items for `$`.
 - `/balance`, `/bal`, `/money`, `/pay`: `$` balance and transfers.
 - `/ah`: auction house using `$`.
