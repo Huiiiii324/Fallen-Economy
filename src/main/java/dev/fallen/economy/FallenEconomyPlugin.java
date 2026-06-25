@@ -1729,32 +1729,64 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private ItemStack loadConfiguredItem(ConfigurationSection row) {
     ConfigurationSection itemSection = row.getConfigurationSection("item");
     if (itemSection != null && !itemSection.contains("==")) {
-      Material material = Material.matchMaterial(itemSection.getString("material", ""));
-      if (material == null || material.isAir()) return null;
-      int amount = Math.max(1, itemSection.getInt("amount", 1));
-      ItemStack item = new ItemStack(material, amount);
-      String name = itemSection.getString("name");
-      if (material == Material.SPAWNER && itemSection.isString("entity-type")) {
-        applySpawnerType(item, itemSection.getString("entity-type"));
-      }
-      if (item.getItemMeta() instanceof PotionMeta potionMeta && itemSection.isString("potion-effect")) {
-        PotionEffectType type = PotionEffectType.getByName(itemSection.getString("potion-effect", ""));
-        if (type != null) {
-          potionMeta.addCustomEffect(new PotionEffect(type, 20 * 120, 0), true);
-          potionMeta.addItemFlags(ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
-          item.setItemMeta(potionMeta);
-        }
-      }
-      if (name != null && !name.isBlank()) {
-        ItemMeta meta = item.getItemMeta();
-        if (meta != null) {
-          meta.setDisplayName(color("&f" + name));
-          item.setItemMeta(meta);
-        }
-      }
-      return item;
+      return loadSimpleConfiguredItem(
+        itemSection.getString("material", ""),
+        itemSection.getInt("amount", 1),
+        itemSection.getString("name"),
+        itemSection.getString("entity-type"),
+        itemSection.getString("potion-effect")
+      );
+    }
+    Object rawItem = row.get("item");
+    if (rawItem instanceof Map<?, ?> itemMap) {
+      return loadSimpleConfiguredItem(
+        String.valueOf(itemMap.get("material")),
+        parseMapInt(itemMap.get("amount"), 1),
+        mapString(itemMap.get("name")),
+        mapString(itemMap.get("entity-type")),
+        mapString(itemMap.get("potion-effect"))
+      );
     }
     return row.getItemStack("item");
+  }
+
+  private ItemStack loadSimpleConfiguredItem(String materialName, int amountValue, String name, String entityType, String potionEffect) {
+    Material material = Material.matchMaterial(materialName == null ? "" : materialName);
+    if (material == null || material.isAir()) return null;
+    int amount = Math.max(1, amountValue);
+    ItemStack item = new ItemStack(material, amount);
+    if (material == Material.SPAWNER && entityType != null && !entityType.isBlank()) {
+      applySpawnerType(item, entityType);
+    }
+    if (item.getItemMeta() instanceof PotionMeta potionMeta && potionEffect != null && !potionEffect.isBlank()) {
+      PotionEffectType type = PotionEffectType.getByName(potionEffect);
+      if (type != null) {
+        potionMeta.addCustomEffect(new PotionEffect(type, 20 * 120, 0), true);
+        potionMeta.addItemFlags(ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
+        item.setItemMeta(potionMeta);
+      }
+    }
+    if (name != null && !name.isBlank()) {
+      ItemMeta meta = item.getItemMeta();
+      if (meta != null) {
+        meta.setDisplayName(color("&f" + name));
+        item.setItemMeta(meta);
+      }
+    }
+    return item;
+  }
+
+  private int parseMapInt(Object value, int fallback) {
+    if (value instanceof Number number) return number.intValue();
+    if (value instanceof String string) {
+      Integer parsed = parseInt(string);
+      if (parsed != null) return parsed;
+    }
+    return fallback;
+  }
+
+  private String mapString(Object value) {
+    return value == null ? null : String.valueOf(value);
   }
 
   private void applySpawnerType(ItemStack item, String entityTypeName) {
