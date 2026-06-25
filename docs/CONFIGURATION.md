@@ -18,9 +18,12 @@ essence:
   enabled: true
   provider: PlayerPoints
   name: Essence
+
+commands:
+  force-shop-hook: true
 ```
 
-`money` controls the internal `$` economy. `essence` controls the PlayerPoints-backed Essence hook.
+`money` controls the internal `$` economy. `essence` controls the PlayerPoints-backed Essence hook. `commands.force-shop-hook` makes player `/shop` go to FallenEconomy before Bukkit command dispatch, which protects the shop from plugin command conflicts.
 
 Shop limits:
 

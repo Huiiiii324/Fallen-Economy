@@ -4,6 +4,7 @@ import java.io.File;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -27,10 +28,12 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
+import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
+import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
@@ -121,6 +124,9 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     Objects.requireNonNull(getCommand("feconomy")).setExecutor(this);
     Objects.requireNonNull(getCommand("feconomy")).setTabCompleter(this);
     Bukkit.getPluginManager().registerEvents(this, this);
+    if (getConfig().getBoolean("commands.force-shop-hook", true)) {
+      getLogger().info("Force /shop hook enabled; FallenEconomy will handle player /shop before command dispatch.");
+    }
   }
 
   @Override
@@ -147,6 +153,25 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     if (name.equals("pay")) return handlePayCommand(sender, args);
     if (name.equals("feconomy")) return handleAdminEconomyCommand(sender, args);
     return false;
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  public void onPlayerCommandPreprocess(PlayerCommandPreprocessEvent event) {
+    if (!getConfig().getBoolean("commands.force-shop-hook", true)) return;
+    String message = event.getMessage();
+    if (message == null) return;
+
+    String commandLine = message.trim();
+    if (!commandLine.startsWith("/")) return;
+    commandLine = commandLine.substring(1).trim();
+    if (commandLine.isEmpty()) return;
+
+    String[] parts = commandLine.split("\\s+");
+    if (!parts[0].equalsIgnoreCase("shop")) return;
+
+    event.setCancelled(true);
+    String[] args = Arrays.copyOfRange(parts, 1, parts.length);
+    handleBuyCommand(event.getPlayer(), args);
   }
 
   private boolean handleBuyCommand(CommandSender sender, String[] args) {

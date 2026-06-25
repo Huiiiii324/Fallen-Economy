@@ -24,7 +24,9 @@ Expected command owners:
 /essenceshop -> FallenEconomy.jar
 ```
 
-If another plugin captures a command, check `commands.yml` aliases and plugin command overrides.
+If another plugin captures `/shop`, keep `commands.force-shop-hook: true` in `plugins/FallenEconomy/config.yml`. FallenEconomy will handle player `/shop` before Bukkit dispatch. This does not affect `/shopgui`, `/shops`, or namespaced commands.
+
+For other command conflicts, check `commands.yml` aliases and plugin command overrides.
 
 ## Buy Shop Cannot Be Edited
 

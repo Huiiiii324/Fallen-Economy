@@ -6,6 +6,8 @@ essence:
   enabled: true
   provider: PlayerPoints
   name: Essence
+commands:
+  force-shop-hook: true
 buy:
   min-price: 1
   max-price: 1000000
