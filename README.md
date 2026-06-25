@@ -25,6 +25,7 @@ Vault is optional and exposes only `$`. PlayerPoints is optional for server star
 - `/shop` is force-hooked by FallenEconomy to avoid command conflicts with other plugins.
 - `/essenceshop`: direct Essence shop access, currently spawners.
 - `/sell`, `/sell hand`, `/sell all`: sell items for `$`.
+- Utility tools: 3x3 Pickaxe, Treecapitator Axe, and Sell Wand via `/feconomy tools give`.
 - `/balance`, `/bal`, `/money`, `/pay`: `$` balance and transfers.
 - `/ah`: auction house using `$`.
 - `/order`: buy orders using `$`.
