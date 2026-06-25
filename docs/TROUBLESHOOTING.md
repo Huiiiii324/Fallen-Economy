@@ -37,6 +37,10 @@ Check:
 - price is inside `buy.min-price` and `buy.max-price`
 - shop has not reached `buy.max-items`
 
+## Shop Categories Are Empty
+
+On startup, FallenEconomy logs how many buy-shop items were loaded and which file was used. If `buy-shop.yml` loads 0 items, the plugin backs it up and restores the bundled starter shop automatically.
+
 ## Essence Shop Does Not Work
 
 Check:

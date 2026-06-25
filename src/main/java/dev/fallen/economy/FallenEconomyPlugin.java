@@ -1,6 +1,8 @@
 package dev.fallen.economy;
 
 import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
 import java.util.ArrayList;
@@ -1657,11 +1659,43 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private void loadBuyShop() {
     buyShopItems.clear();
     nextBuyShopId = loadShopFile(buyShopFile, buyShopItems, ShopCurrency.MONEY);
+    if (buyShopItems.isEmpty()) {
+      getLogger().warning("Loaded 0 buy shop items from " + buyShopFile.getAbsolutePath() + ". Restoring bundled buy-shop.yml.");
+      restoreBundledDataFile("buy-shop.yml", buyShopFile);
+      nextBuyShopId = loadShopFile(buyShopFile, buyShopItems, ShopCurrency.MONEY);
+    }
+    logShopLoad("Buy shop", buyShopFile, buyShopItems);
   }
 
   private void loadEssenceShop() {
     essenceShopItems.clear();
     nextEssenceShopId = loadShopFile(essenceShopFile, essenceShopItems, ShopCurrency.ESSENCE);
+    logShopLoad("Essence shop", essenceShopFile, essenceShopItems);
+  }
+
+  private void restoreBundledDataFile(String resourceName, File targetFile) {
+    try {
+      if (targetFile.exists()) {
+        File backupFile = new File(targetFile.getParentFile(), resourceName + ".backup-" + System.currentTimeMillis());
+        Files.copy(targetFile.toPath(), backupFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+        getLogger().warning("Backed up existing " + resourceName + " to " + backupFile.getName());
+      }
+      saveResource(resourceName, true);
+    } catch (IllegalArgumentException exception) {
+      getLogger().severe("Bundled resource missing: " + resourceName);
+    } catch (Exception exception) {
+      getLogger().severe("Failed to restore " + resourceName + ": " + exception.getMessage());
+    }
+  }
+
+  private void logShopLoad(String label, File file, Map<Integer, BuyShopItem> items) {
+    Map<String, Long> counts = items.values().stream().collect(Collectors.groupingBy(item -> item.category, LinkedHashMap::new, Collectors.counting()));
+    String summary = counts.isEmpty()
+      ? "no categories"
+      : counts.entrySet().stream()
+        .map(entry -> entry.getKey() + "=" + entry.getValue())
+        .collect(Collectors.joining(", "));
+    getLogger().info(label + " loaded " + items.size() + " items from " + file.getAbsolutePath() + " (" + summary + ").");
   }
 
   private int loadShopFile(File file, Map<Integer, BuyShopItem> target, ShopCurrency defaultCurrency) {
