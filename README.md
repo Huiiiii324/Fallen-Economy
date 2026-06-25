@@ -6,9 +6,8 @@ Standalone Paper `1.21.11` economy plugin for the Fallen Economy package.
 
 ## Features
 
-- `/shop` native shop with End, Nether, Gear, Food, and Spawners categories
-- End, Nether, Gear, and Food use `$`; Spawners use PlayerPoints Essence
-- `/essenceshop` direct/admin access for PlayerPoints Essence items, starting with spawners
+- `/shop` native shop with End, Nether, Gear, and Food categories using `$`
+- `/essenceshop` separate PlayerPoints Essence shop, starting with spawners
 - `/sell`, `/sell hand`, and `/sell all` native selling into `$`
 - `/balance`, `/bal`, `/money`, and `/pay` for `$`
 - `/essence` for PlayerPoints Essence balance

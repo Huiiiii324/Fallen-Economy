@@ -11,7 +11,7 @@ plugins/FallenEconomy/
 | `config.yml` | Main plugin settings. |
 | `money.yml` | Internal `$` balances. |
 | `buy-shop.yml` | Native `/shop` `$` entries for End, Nether, Gear, and Food. |
-| `essence-shop.yml` | PlayerPoints Essence entries shown through `/shop spawners` and `/essenceshop`. |
+| `essence-shop.yml` | PlayerPoints Essence entries shown through `/essenceshop`. |
 | `sell-values.yml` | Per-item sell values paid in `$`. |
 | `auctions.yml` | Active `$` auction listings. |
 | `orders.yml` | Active `$` buy orders and escrow state. |

@@ -6,10 +6,9 @@
 | --- | --- |
 | `/shop` | Opens native shop categories. |
 | `/shop <end|nether|gear|food>` | Opens a `$` shop category. |
-| `/shop spawners` | Opens the Essence-priced spawner category. |
 | `/shop sort <mode>` | Sets shop sort mode. |
 | `/essence` | Shows PlayerPoints Essence balance. |
-| `/essenceshop` | Opens the Essence shop. |
+| `/essenceshop` | Opens the Essence shop, currently spawners. |
 | `/essenceshop <category>` | Opens an Essence shop category. |
 | `/sell` | Opens native sell-values GUI. |
 | `/sell hand` | Sells the stack in your main hand for `$`. |

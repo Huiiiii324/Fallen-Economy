@@ -190,8 +190,11 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     if (page != null) openShopCategories(player);
     else {
       String category = canonicalCategory(args[0]);
-      if (category.equalsIgnoreCase("Spawners")) openEssenceShopMenu(player, "Spawners", 0);
-      else openBuyMenu(player, category, 0);
+      if (category.equalsIgnoreCase("Spawners")) {
+        player.sendMessage(color("&eSpawner items are in &f/essenceshop&e."));
+      } else {
+        openBuyMenu(player, category, 0);
+      }
     }
     return true;
   }
@@ -1076,8 +1079,6 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     addCategoryButton(inv, holder, 12, "Nether", Material.NETHERRACK, buyShopItems);
     addCategoryButton(inv, holder, 14, "Gear", Material.TOTEM_OF_UNDYING, buyShopItems);
     addCategoryButton(inv, holder, 16, "Food", Material.COOKED_BEEF, buyShopItems);
-    addCategoryButton(inv, holder, 22, "Spawners", Material.SPAWNER, essenceShopItems);
-    holder.categorySlots.put(22, "ESSENCE_SHOP");
     player.openInventory(inv);
   }
 
@@ -1322,8 +1323,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       if (paged.type == MenuType.BUY_CATEGORIES) {
         String category = paged.categorySlots.get(slot);
         if (category == null) return;
-        if (category.equals("ESSENCE_SHOP")) openEssenceShopMenu(player, "Spawners", 0);
-        else openBuyMenu(player, category, 0);
+        openBuyMenu(player, category, 0);
         return;
       }
       if (slot == 45) {
@@ -1906,7 +1906,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private void sendBuyHelp(Player player) {
     player.sendMessage(color("&6Fallen Shop"));
     player.sendMessage(color("&e/shop &7- open shop categories"));
-    player.sendMessage(color("&e/shop <end|nether|gear|food|spawners> &7- open category"));
+    player.sendMessage(color("&e/shop <end|nether|gear|food> &7- open $ category"));
+    player.sendMessage(color("&e/essenceshop &7- open Essence spawners"));
     player.sendMessage(color("&e/shop sort <newest|oldest|price_asc|price_desc|amount>"));
     if (player.hasPermission("falleneconomy.buy.config")) {
       player.sendMessage(color("&e/shop config &7- open shop config"));
@@ -1956,7 +1957,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
     String name = command.getName().toLowerCase(Locale.ROOT);
     if (name.equals("shop")) {
-      if (args.length == 1) return filter(List.of("End", "Nether", "Gear", "Food", "Spawners", "config", "sort", "help"), args[0]);
+      if (args.length == 1) return filter(List.of("End", "Nether", "Gear", "Food", "config", "sort", "help"), args[0]);
       if (args.length == 2 && args[0].equalsIgnoreCase("sort")) return filter(SortMode.ids(), args[1]);
       if (args.length == 2 && args[0].equalsIgnoreCase("config")) return filter(List.of("add", "remove", "delete", "price", "list", "help"), args[1]);
       if (args.length == 4 && args[0].equalsIgnoreCase("config") && args[1].equalsIgnoreCase("add")) return filter(List.of("End", "Nether", "Gear", "Food"), args[3]);

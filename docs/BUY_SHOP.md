@@ -17,7 +17,7 @@ Starter `$` categories:
 - Gear
 - Food
 
-The player-facing `/shop` also shows a special `Spawners` category. That category is backed by `essence-shop.yml` and uses PlayerPoints Essence.
+Spawner and other special Essence items are intentionally not shown in `/shop`. They live in `/essenceshop`.
 
 Each item stores:
 
@@ -40,7 +40,7 @@ Example:
 
 ## Essence Shop
 
-`/essenceshop` is the direct/admin view for special Essence items. It is stored in:
+`/essenceshop` is the player/admin view for special Essence items. It is stored in:
 
 ```text
 plugins/FallenEconomy/essence-shop.yml

@@ -30,7 +30,6 @@ Essence is backed by PlayerPoints.
 Used by:
 
 - `/essence`
-- `/shop spawners`
 - `/essenceshop`
 - Essence-priced special entries such as spawners
 - `/feconomy essence balance/give/take/set`
