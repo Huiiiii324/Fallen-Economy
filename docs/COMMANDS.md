@@ -7,6 +7,8 @@
 | `/shop` | Opens native shop categories. |
 | `/shop <end|nether|gear|food>` | Opens a `$` shop category. |
 | `/shop sort <mode>` | Sets shop sort mode. |
+
+Shop item clicks open a confirmation GUI with amount controls before money or Essence is withdrawn.
 | `/essence` | Shows PlayerPoints Essence balance. |
 | `/essenceshop` | Opens the Essence shop, currently spawners. |
 | `/essenceshop <category>` | Opens an Essence shop category. |

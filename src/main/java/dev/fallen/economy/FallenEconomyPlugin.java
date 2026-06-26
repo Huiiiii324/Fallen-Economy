@@ -1116,21 +1116,47 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   }
 
   private void buyShopItem(Player buyer, int id, Map<Integer, BuyShopItem> sourceShop) {
+    buyShopItem(buyer, id, sourceShop, 0);
+  }
+
+  private void buyShopItem(Player buyer, int id, Map<Integer, BuyShopItem> sourceShop, int amount) {
     BuyShopItem shopItem = sourceShop.get(id);
     if (shopItem == null) {
       buyer.sendMessage(color("&cThis shop item is no longer available."));
       return;
     }
-    if (!hasCurrency(buyer, shopItem.currency, shopItem.price)) {
-      buyer.sendMessage(color("&cYou need &f" + format(shopItem.price) + " " + currencyLabel(shopItem.currency) + "&c."));
+    int purchaseAmount = amount <= 0 ? Math.max(1, shopItem.item.getAmount()) : Math.max(1, Math.min(64, amount));
+    double totalPrice = shopPriceForAmount(shopItem, purchaseAmount);
+    if (!hasCurrency(buyer, shopItem.currency, totalPrice)) {
+      buyer.sendMessage(color("&cYou need &f" + format(totalPrice) + " " + currencyLabel(shopItem.currency) + "&c."));
       return;
     }
-    if (!withdrawCurrency(buyer, shopItem.currency, shopItem.price)) {
+    if (!withdrawCurrency(buyer, shopItem.currency, totalPrice)) {
       buyer.sendMessage(color("&cPayment failed."));
       return;
     }
-    giveOrDrop(buyer, shopItem.item.clone());
-    buyer.sendMessage(color("&aBought &f" + shopItem.item.getAmount() + "x " + displayItemName(shopItem.item) + " &afor &f" + format(shopItem.price) + " " + currencyLabel(shopItem.currency) + "&a."));
+    giveShopItems(buyer, shopItem.item, purchaseAmount);
+    buyer.sendMessage(color("&aBought &f" + purchaseAmount + "x " + displayItemName(shopItem.item) + " &afor &f" + format(totalPrice) + " " + currencyLabel(shopItem.currency) + "&a."));
+  }
+
+  private void giveShopItems(Player player, ItemStack template, int amount) {
+    int remaining = Math.max(1, amount);
+    int maxStack = Math.max(1, template.getMaxStackSize());
+    while (remaining > 0) {
+      int stackAmount = Math.min(maxStack, remaining);
+      ItemStack stack = template.clone();
+      stack.setAmount(stackAmount);
+      giveOrDrop(player, stack);
+      remaining -= stackAmount;
+    }
+  }
+
+  private double unitShopPrice(BuyShopItem shopItem) {
+    return shopItem.price / Math.max(1, shopItem.item.getAmount());
+  }
+
+  private double shopPriceForAmount(BuyShopItem shopItem, int amount) {
+    return unitShopPrice(shopItem) * Math.max(1, amount);
   }
 
   private ItemStack createUtilityTool(String id, int amount) {
@@ -1647,6 +1673,70 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     player.openInventory(inv);
   }
 
+  private void openShopConfirm(Player player, int itemId, MenuType sourceType, String category, int page, Map<Integer, BuyShopItem> sourceShop) {
+    BuyShopItem shopItem = sourceShop.get(itemId);
+    if (shopItem == null) {
+      player.sendMessage(color("&cThis shop item is no longer available."));
+      return;
+    }
+    ShopConfirmHolder holder = new ShopConfirmHolder(itemId, sourceType, category, page, Math.max(1, shopItem.item.getAmount()));
+    Inventory inv = Bukkit.createInventory(holder, 27, color("&8Confirm Shop Purchase"));
+    holder.inventory = inv;
+    addAmountButton(inv, holder, 9, -64);
+    addAmountButton(inv, holder, 10, -32);
+    addAmountButton(inv, holder, 11, -16);
+    addAmountButton(inv, holder, 12, -8);
+    addAmountButton(inv, holder, 13, -1);
+    addAmountButton(inv, holder, 14, 1);
+    addAmountButton(inv, holder, 15, 8);
+    addAmountButton(inv, holder, 16, 16);
+    addAmountButton(inv, holder, 17, 32);
+    addAmountButton(inv, holder, 18, 64);
+    inv.setItem(22, navItem(Material.LIME_CONCRETE, "&aBuy"));
+    inv.setItem(24, navItem(Material.RED_CONCRETE, "&cDo Not Buy"));
+    redrawShopConfirm(holder);
+    player.openInventory(inv);
+  }
+
+  private void addAmountButton(Inventory inv, ShopConfirmHolder holder, int slot, int delta) {
+    holder.amountSlots.put(slot, delta);
+    String prefix = delta > 0 ? "+" : "";
+    Material material = delta > 0 ? Material.LIME_STAINED_GLASS_PANE : Material.RED_STAINED_GLASS_PANE;
+    inv.setItem(slot, navItem(material, "&e" + prefix + delta));
+  }
+
+  private void redrawShopConfirm(ShopConfirmHolder holder) {
+    BuyShopItem shopItem = shopSource(holder.sourceType).get(holder.itemId);
+    if (shopItem == null || holder.inventory == null) return;
+    holder.inventory.setItem(4, confirmShopIcon(shopItem, holder.amount));
+    double totalPrice = shopPriceForAmount(shopItem, holder.amount);
+    holder.inventory.setItem(22, navItem(Material.LIME_CONCRETE, "&aBuy &f" + holder.amount + "x &7(" + format(totalPrice) + " " + currencyLabel(shopItem.currency) + ")"));
+  }
+
+  private ItemStack confirmShopIcon(BuyShopItem shopItem, int amount) {
+    ItemStack icon = shopItem.item.clone();
+    icon.setAmount(Math.max(1, Math.min(icon.getMaxStackSize(), amount)));
+    ItemMeta meta = icon.getItemMeta();
+    if (meta != null) {
+      List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
+      double totalPrice = shopPriceForAmount(shopItem, amount);
+      lore.add(color("&8&m----------------"));
+      lore.add(color("&7Amount: &f" + amount));
+      lore.add(color("&7Total: &b" + format(totalPrice) + " " + currencyLabel(shopItem.currency)));
+      lore.add(color("&7Unit: &b" + format(unitShopPrice(shopItem)) + " " + currencyLabel(shopItem.currency)));
+      lore.add(color("&eUse buttons below to change amount"));
+      meta.setLore(lore);
+      meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+      icon.setItemMeta(meta);
+    }
+    return icon;
+  }
+
+  private void returnToShop(Player player, ShopConfirmHolder holder) {
+    if (holder.sourceType == MenuType.ESSENCE_SHOP) openEssenceShopMenu(player, holder.category, holder.page);
+    else openBuyMenu(player, holder.category, holder.page);
+  }
+
   @EventHandler
   public void onInventoryClick(InventoryClickEvent event) {
     if (!(event.getWhoClicked() instanceof Player player)) return;
@@ -1733,18 +1823,12 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       Integer id = paged.slotIds.get(slot);
       if (id == null) return;
       if (paged.type == MenuType.BUY) {
-        buyShopItem(player, id, buyShopItems);
-        int pg = paged.page;
-        String category = paged.category;
-        Bukkit.getScheduler().runTask(this, () -> openBuyMenu(player, category, pg));
+        openShopConfirm(player, id, MenuType.BUY, paged.category, paged.page, buyShopItems);
       } else if (paged.type == MenuType.BUY_CONFIG) {
         removeBuyShopItem(player, id);
         openBuyConfigMenu(player, paged.page);
       } else if (paged.type == MenuType.ESSENCE_SHOP) {
-        buyShopItem(player, id, essenceShopItems);
-        int pg = paged.page;
-        String category = paged.category;
-        Bukkit.getScheduler().runTask(this, () -> openEssenceShopMenu(player, category, pg));
+        openShopConfirm(player, id, MenuType.ESSENCE_SHOP, paged.category, paged.page, essenceShopItems);
       } else if (paged.type == MenuType.ESSENCE_CONFIG) {
         removeEssenceShopItem(player, id);
         openEssenceShopConfigMenu(player, paged.page);
@@ -1766,6 +1850,22 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         player.closeInventory();
       } else if (slot == 13) {
         player.closeInventory();
+      }
+    } else if (holder instanceof ShopConfirmHolder confirm) {
+      event.setCancelled(true);
+      int slot = event.getRawSlot();
+      if (slot < 0 || slot >= event.getInventory().getSize()) return;
+      Integer delta = confirm.amountSlots.get(slot);
+      if (delta != null) {
+        confirm.amount = Math.max(1, Math.min(64, confirm.amount + delta));
+        redrawShopConfirm(confirm);
+        return;
+      }
+      if (slot == 22) {
+        buyShopItem(player, confirm.itemId, shopSource(confirm.sourceType), confirm.amount);
+        returnToShop(player, confirm);
+      } else if (slot == 24) {
+        returnToShop(player, confirm);
       }
     }
   }
@@ -1831,7 +1931,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         lore.add(color("&cClick to remove"));
         lore.add(color("&7Set price: &f/shop edit price " + shopItem.id + " <price>"));
       } else {
-        lore.add(color("&eClick to buy"));
+        lore.add(color("&eClick to choose amount"));
       }
       meta.setLore(lore);
       meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
@@ -1968,6 +2068,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private boolean withdrawCurrency(OfflinePlayer player, ShopCurrency currency, double amount) {
     return currency == ShopCurrency.ESSENCE ? essence.available() && essence.withdraw(player, amount) : economy.withdraw(player, amount);
+  }
+
+  private Map<Integer, BuyShopItem> shopSource(MenuType sourceType) {
+    return sourceType == MenuType.ESSENCE_SHOP ? essenceShopItems : buyShopItems;
   }
 
   private String currencyLabel(ShopCurrency currency) {
@@ -2642,6 +2746,29 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
     private ConfirmHolder(int auctionId) {
       this.auctionId = auctionId;
+    }
+
+    @Override
+    public Inventory getInventory() {
+      return inventory;
+    }
+  }
+
+  private static final class ShopConfirmHolder implements InventoryHolder {
+    private final int itemId;
+    private final MenuType sourceType;
+    private final String category;
+    private final int page;
+    private final Map<Integer, Integer> amountSlots = new HashMap<>();
+    private int amount;
+    private Inventory inventory;
+
+    private ShopConfirmHolder(int itemId, MenuType sourceType, String category, int page, int amount) {
+      this.itemId = itemId;
+      this.sourceType = sourceType;
+      this.category = category;
+      this.page = page;
+      this.amount = Math.max(1, Math.min(64, amount));
     }
 
     @Override
