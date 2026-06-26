@@ -29,13 +29,13 @@ Each item stores:
 Admin add command for normal `$` shop entries:
 
 ```text
-/shop config add <price> <category>
+/shop edit add <price> <category>
 ```
 
 Example:
 
 ```text
-/shop config add 350 Gear
+/shop edit add 350 Gear
 ```
 
 ## Essence Shop

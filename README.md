@@ -7,6 +7,8 @@ Standalone Paper `1.21.11` economy plugin for the Fallen Economy package.
 ## Features
 
 - `/shop` native shop with End, Nether, Gear, and Food categories using `$`
+- compact 3-row `/shop` category views with a back-to-categories button
+- `/shop edit` native shop editor for admin item management
 - force `/shop` player hook to protect the main shop command from plugin conflicts
 - `/essenceshop` separate PlayerPoints Essence shop, starting with spawners
 - `/sell`, `/sell hand`, and `/sell all` native selling into `$`

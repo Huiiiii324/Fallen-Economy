@@ -259,7 +259,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       return true;
     }
 
-    if (args[0].equalsIgnoreCase("config")) {
+    if (args[0].equalsIgnoreCase("config") || args[0].equalsIgnoreCase("edit")) {
       return handleBuyConfigCommand(player, args);
     }
     if (args[0].equalsIgnoreCase("sort")) {
@@ -307,7 +307,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     switch (args[1].toLowerCase(Locale.ROOT)) {
       case "add" -> {
         if (args.length < 4) {
-          player.sendMessage(color("&eUsage: /shop config add <price> <category>"));
+          player.sendMessage(color("&eUsage: /shop edit add <price> <category>"));
           return true;
         }
         Double price = parseMoney(args[2]);
@@ -320,7 +320,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       }
       case "remove", "delete" -> {
         if (args.length < 3) {
-          player.sendMessage(color("&eUsage: /shop config remove <id>"));
+          player.sendMessage(color("&eUsage: /shop edit remove <id>"));
           return true;
         }
         Integer id = parseInt(args[2]);
@@ -333,7 +333,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       }
       case "price" -> {
         if (args.length < 4) {
-          player.sendMessage(color("&eUsage: /shop config price <id> <price>"));
+          player.sendMessage(color("&eUsage: /shop edit price <id> <price>"));
           return true;
         }
         Integer id = parseInt(args[2]);
@@ -1447,20 +1447,24 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private void openBuyMenu(Player player, String category, int page) {
     String normalizedCategory = canonicalCategory(category);
     List<BuyShopItem> sorted = sortedShop(player, buyShopItems, normalizedCategory);
-    int maxPage = Math.max(0, (sorted.size() - 1) / 45);
+    int itemsPerPage = 18;
+    int maxPage = Math.max(0, (sorted.size() - 1) / itemsPerPage);
     page = Math.max(0, Math.min(page, maxPage));
     PagedHolder holder = new PagedHolder(MenuType.BUY, page, normalizedCategory);
-    Inventory inv = Bukkit.createInventory(holder, 54, color("&8" + normalizedCategory + " Shop &7" + (page + 1) + "/" + (maxPage + 1)));
+    Inventory inv = Bukkit.createInventory(holder, 27, color("&8" + normalizedCategory + " Shop &7" + (page + 1) + "/" + (maxPage + 1)));
     holder.inventory = inv;
-    int start = page * 45;
-    for (int slot = 0; slot < 45 && start + slot < sorted.size(); slot++) {
+    int start = page * itemsPerPage;
+    for (int slot = 0; slot < itemsPerPage && start + slot < sorted.size(); slot++) {
       BuyShopItem item = sorted.get(start + slot);
       holder.slotIds.put(slot, item.id);
       inv.setItem(slot, buyIcon(item, false));
     }
-    inv.setItem(45, navItem(Material.ARROW, "&ePrevious Page"));
-    inv.setItem(49, navItem(Material.HOPPER, "&bSort: &f" + buySort(player).id));
-    inv.setItem(53, navItem(Material.ARROW, "&eNext Page"));
+    ItemStack filler = navItem(Material.GRAY_STAINED_GLASS_PANE, " ");
+    for (int slot = 18; slot < 27; slot++) inv.setItem(slot, filler);
+    inv.setItem(18, navItem(Material.ARROW, "&ePrevious Page"));
+    inv.setItem(22, navItem(Material.COMPASS, "&bBack to Categories"));
+    inv.setItem(24, navItem(Material.HOPPER, "&bSort: &f" + buySort(player).id));
+    inv.setItem(26, navItem(Material.ARROW, "&eNext Page"));
     player.openInventory(inv);
   }
 
@@ -1565,7 +1569,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       inv.setItem(slot, buyIcon(item, true));
     }
     inv.setItem(45, navItem(Material.ARROW, "&ePrevious Page"));
-    inv.setItem(49, navItem(Material.BOOK, "&bUse /shop config add <price> <category>"));
+    inv.setItem(49, navItem(Material.BOOK, "&bUse /shop edit add <price> <category>"));
     inv.setItem(53, navItem(Material.ARROW, "&eNext Page"));
     player.openInventory(inv);
   }
@@ -1673,11 +1677,29 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         openBuyMenu(player, category, 0);
         return;
       }
+      if (paged.type == MenuType.BUY) {
+        if (slot == 18) {
+          openBuyMenu(player, paged.category, paged.page - 1);
+          return;
+        }
+        if (slot == 22) {
+          openShopCategories(player);
+          return;
+        }
+        if (slot == 24) {
+          cycleSort(player, paged.type);
+          openBuyMenu(player, paged.category, 0);
+          return;
+        }
+        if (slot == 26) {
+          openBuyMenu(player, paged.category, paged.page + 1);
+          return;
+        }
+      }
       if (slot == 45) {
         if (paged.type == MenuType.AUCTION) openAuctionMenu(player, paged.page - 1);
         else if (paged.type == MenuType.ORDERS) openOrdersMenu(player, paged.page - 1);
         else if (paged.type == MenuType.SELL) openSellMenu(player, paged.page - 1);
-        else if (paged.type == MenuType.BUY) openBuyMenu(player, paged.category, paged.page - 1);
         else if (paged.type == MenuType.ESSENCE_SHOP) openEssenceShopMenu(player, paged.category, paged.page - 1);
         else if (paged.type == MenuType.ESSENCE_CONFIG) openEssenceShopConfigMenu(player, paged.page - 1);
         else openBuyConfigMenu(player, paged.page - 1);
@@ -1687,7 +1709,6 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         if (paged.type == MenuType.AUCTION) openAuctionMenu(player, paged.page + 1);
         else if (paged.type == MenuType.ORDERS) openOrdersMenu(player, paged.page + 1);
         else if (paged.type == MenuType.SELL) openSellMenu(player, paged.page + 1);
-        else if (paged.type == MenuType.BUY) openBuyMenu(player, paged.category, paged.page + 1);
         else if (paged.type == MenuType.ESSENCE_SHOP) openEssenceShopMenu(player, paged.category, paged.page + 1);
         else if (paged.type == MenuType.ESSENCE_CONFIG) openEssenceShopConfigMenu(player, paged.page + 1);
         else openBuyConfigMenu(player, paged.page + 1);
@@ -1808,7 +1829,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       lore.add(color("&7Price: &b" + format(shopItem.price) + " " + currencyLabel(shopItem.currency)));
       if (configView) {
         lore.add(color("&cClick to remove"));
-        lore.add(color("&7Set price: &f/shop config price " + shopItem.id + " <price>"));
+        lore.add(color("&7Set price: &f/shop edit price " + shopItem.id + " <price>"));
       } else {
         lore.add(color("&eClick to buy"));
       }
@@ -2336,8 +2357,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     player.sendMessage(color("&e/essenceshop &7- open Essence spawners"));
     player.sendMessage(color("&e/shop sort <newest|oldest|price_asc|price_desc|amount>"));
     if (player.hasPermission("falleneconomy.buy.config")) {
-      player.sendMessage(color("&e/shop config &7- open shop config"));
-      player.sendMessage(color("&e/shop config add <price> <category> &7- add held item stack for $"));
+      player.sendMessage(color("&e/shop edit &7- open shop editor"));
+      player.sendMessage(color("&e/shop edit add <price> <category> &7- add held item stack for $"));
     }
   }
 
@@ -2351,11 +2372,11 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private void sendBuyConfigHelp(Player player) {
     player.sendMessage(color("&6Fallen Shop Config"));
-    player.sendMessage(color("&e/shop config &7- open config GUI"));
-    player.sendMessage(color("&e/shop config add <price> <category> &7- add held item stack for $"));
-    player.sendMessage(color("&e/shop config remove <id> &7- remove shop item"));
-    player.sendMessage(color("&e/shop config price <id> <price> &7- set price"));
-    player.sendMessage(color("&e/shop config list &7- list shop items"));
+    player.sendMessage(color("&e/shop edit &7- open editor GUI"));
+    player.sendMessage(color("&e/shop edit add <price> <category> &7- add held item stack for $"));
+    player.sendMessage(color("&e/shop edit remove <id> &7- remove shop item"));
+    player.sendMessage(color("&e/shop edit price <id> <price> &7- set price"));
+    player.sendMessage(color("&e/shop edit list &7- list shop items"));
   }
 
   private void sendEssenceShopHelp(Player player) {
@@ -2383,10 +2404,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
     String name = command.getName().toLowerCase(Locale.ROOT);
     if (name.equals("shop")) {
-      if (args.length == 1) return filter(List.of("End", "Nether", "Gear", "Food", "config", "sort", "help"), args[0]);
+      if (args.length == 1) return filter(List.of("End", "Nether", "Gear", "Food", "edit", "config", "sort", "help"), args[0]);
       if (args.length == 2 && args[0].equalsIgnoreCase("sort")) return filter(SortMode.ids(), args[1]);
-      if (args.length == 2 && args[0].equalsIgnoreCase("config")) return filter(List.of("add", "remove", "delete", "price", "list", "help"), args[1]);
-      if (args.length == 4 && args[0].equalsIgnoreCase("config") && args[1].equalsIgnoreCase("add")) return filter(List.of("End", "Nether", "Gear", "Food"), args[3]);
+      if (args.length == 2 && (args[0].equalsIgnoreCase("config") || args[0].equalsIgnoreCase("edit"))) return filter(List.of("add", "remove", "delete", "price", "list", "help"), args[1]);
+      if (args.length == 4 && (args[0].equalsIgnoreCase("config") || args[0].equalsIgnoreCase("edit")) && args[1].equalsIgnoreCase("add")) return filter(List.of("End", "Nether", "Gear", "Food"), args[3]);
     }
     if (name.equals("essenceshop")) {
       if (args.length == 1) return filter(List.of("Spawners", "config", "help"), args[0]);

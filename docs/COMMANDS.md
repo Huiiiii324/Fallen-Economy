@@ -34,11 +34,11 @@
 
 | Command | Description |
 | --- | --- |
-| `/shop config` | Opens the admin `$` shop config GUI. |
-| `/shop config add <price> <category>` | Adds the held item stack to `buy-shop.yml` for `$`. |
-| `/shop config remove <id>` | Removes a shop item. |
-| `/shop config price <id> <price>` | Changes a shop item price. |
-| `/shop config list` | Lists configured `$` shop items in chat. |
+| `/shop edit` | Opens the admin `$` shop editor GUI. |
+| `/shop edit add <price> <category>` | Adds the held item stack to `buy-shop.yml` for `$`. |
+| `/shop edit remove <id>` | Removes a shop item. |
+| `/shop edit price <id> <price>` | Changes a shop item price. |
+| `/shop edit list` | Lists configured `$` shop items in chat. |
 | `/essenceshop config` | Opens the Essence shop config GUI. |
 | `/essenceshop config add <price> <category>` | Adds the held item stack to `essence-shop.yml`. |
 | `/essenceshop config remove <id>` | Removes an Essence shop item. |
