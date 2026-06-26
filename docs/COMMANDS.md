@@ -4,7 +4,8 @@
 | --- | --- |
 | `/shop` | Open shop categories. |
 | `/shop <end|nether|gear|food>` | Open a normal `$` shop category. |
-| `/shop config add <price> <category>` | Add held item to the normal `$` shop config. |
+| `/shop edit` | Open the normal `$` shop editor. |
+| `/shop edit add <price> <category>` | Add held item to the normal `$` shop config. |
 | `/essence` | Show PlayerPoints Essence balance. |
 | `/essenceshop` | Open Essence shop, currently spawners. |
 | `/essenceshop config add <price> <category>` | Add held item to Essence shop config. |

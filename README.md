@@ -22,6 +22,7 @@ Vault is optional and exposes only `$`. PlayerPoints is optional for server star
 ## Main Commands
 
 - `/shop`: normal `$` categories only.
+- `/shop edit`: normal `$` shop editor.
 - `/shop` is force-hooked by FallenEconomy to avoid command conflicts with other plugins.
 - `/essenceshop`: direct Essence shop access, currently spawners.
 - `/sell`, `/sell hand`, `/sell all`: sell items for `$`.
