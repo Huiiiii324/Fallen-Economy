@@ -99,6 +99,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private NamespacedKey toolKey;
 
   private static final String TOOL_PICKAXE = "pickaxe_3x3";
+  private static final String TOOL_SHOVEL = "shovel_3x3";
   private static final String TOOL_AXE = "treecapitator_axe";
   private static final String TOOL_SELL_WAND = "sell_wand";
 
@@ -233,6 +234,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     ItemStack tool = player.getInventory().getItemInMainHand();
     if (isUtilityTool(tool, TOOL_PICKAXE)) {
       handlePickaxeBreak(player, block, tool);
+      return;
+    }
+    if (isUtilityTool(tool, TOOL_SHOVEL)) {
+      handleShovelBreak(player, block, tool);
       return;
     }
     if (isUtilityTool(tool, TOOL_AXE)) {
@@ -731,7 +736,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       sender.sendMessage(color("&e/feconomy set <player> <amount>"));
       sender.sendMessage(color("&e/feconomy essence balance <player>"));
       sender.sendMessage(color("&e/feconomy essence give|take|set <player> <amount>"));
-      sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|axe|sellwand> [amount]"));
+      sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]"));
       return true;
     }
     if (args[0].equalsIgnoreCase("essence")) {
@@ -791,7 +796,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private boolean handleAdminToolsCommand(CommandSender sender, String[] args) {
     if (args.length < 4 || !args[1].equalsIgnoreCase("give")) {
-      sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|axe|sellwand> [amount]"));
+      sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]"));
       return true;
     }
     Player target = Bukkit.getPlayerExact(args[2]);
@@ -810,7 +815,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
     ItemStack tool = createUtilityTool(args[3], amount);
     if (tool == null) {
-      sender.sendMessage(color("&cUnknown tool. Use pickaxe, axe, or sellwand."));
+      sender.sendMessage(color("&cUnknown tool. Use pickaxe, shovel, axe, or sellwand."));
       return true;
     }
     giveOrDrop(target, tool);
@@ -1138,6 +1143,13 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         "&bFallen 3x3 Pickaxe",
         List.of("&7Mines 3x3x1", "&8Fallen Utility Tool")
       );
+      case "shovel", "3x3shovel" -> taggedTool(
+        Material.NETHERITE_SHOVEL,
+        amount,
+        TOOL_SHOVEL,
+        "&bFallen 3x3 Shovel",
+        List.of("&7Digs 3x3x1", "&8Fallen Utility Tool")
+      );
       case "axe", "treecapitator", "treeaxe" -> taggedTool(
         Material.NETHERITE_AXE,
         amount,
@@ -1265,14 +1277,28 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     BlockFace face = lastFaceFor(player, origin);
     int maxExtra = Math.max(0, getConfig().getInt("tools.pickaxe.max-extra-blocks", 8));
     int broken = 0;
-    for (Block extra : pickaxeArea(origin, face)) {
+    for (Block extra : toolArea(origin, face)) {
       if (broken >= maxExtra || tool.getType().isAir()) return;
       if (extra.equals(origin) || !isPickaxeMineable(extra)) continue;
       if (breakUtilityBlock(player, extra, tool)) broken++;
     }
   }
 
-  private List<Block> pickaxeArea(Block origin, BlockFace face) {
+  private void handleShovelBreak(Player player, Block origin, ItemStack tool) {
+    if (!getConfig().getBoolean("tools.shovel.enabled", true)) return;
+    if (!player.hasPermission("falleneconomy.tools.shovel")) return;
+    if (!isShovelMineable(origin)) return;
+    BlockFace face = lastFaceFor(player, origin);
+    int maxExtra = Math.max(0, getConfig().getInt("tools.shovel.max-extra-blocks", 8));
+    int broken = 0;
+    for (Block extra : toolArea(origin, face)) {
+      if (broken >= maxExtra || tool.getType().isAir()) return;
+      if (extra.equals(origin) || !isShovelMineable(extra)) continue;
+      if (breakUtilityBlock(player, extra, tool)) broken++;
+    }
+  }
+
+  private List<Block> toolArea(Block origin, BlockFace face) {
     List<Block> blocks = new ArrayList<>();
     if (face == BlockFace.UP || face == BlockFace.DOWN) {
       for (int x = -1; x <= 1; x++) for (int z = -1; z <= 1; z++) blocks.add(origin.getRelative(x, 0, z));
@@ -1302,6 +1328,14 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     Material material = block.getType();
     if (material.isAir() || block.isLiquid() || !material.isSolid()) return false;
     if (!Tag.MINEABLE_PICKAXE.isTagged(material)) return false;
+    if (block.getState() instanceof Container) return false;
+    return !isUnsafeUtilityBlock(material);
+  }
+
+  private boolean isShovelMineable(Block block) {
+    Material material = block.getType();
+    if (material.isAir() || block.isLiquid() || !material.isSolid()) return false;
+    if (!Tag.MINEABLE_SHOVEL.isTagged(material)) return false;
     if (block.getState() instanceof Container) return false;
     return !isUnsafeUtilityBlock(material);
   }
@@ -2385,7 +2419,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
           .toList();
       }
       if (args.length == 4 && args[0].equalsIgnoreCase("tools") && args[1].equalsIgnoreCase("give")) {
-        return filter(List.of("pickaxe", "axe", "sellwand"), args[3]);
+        return filter(List.of("pickaxe", "shovel", "axe", "sellwand"), args[3]);
       }
     }
     return List.of();

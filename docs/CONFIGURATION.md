@@ -42,6 +42,8 @@ Utility tools:
 | --- | --- |
 | `tools.pickaxe.enabled` | Enables Fallen 3x3 Pickaxe. |
 | `tools.pickaxe.max-extra-blocks` | Maximum extra blocks broken per pickaxe use. |
+| `tools.shovel.enabled` | Enables Fallen 3x3 Shovel. |
+| `tools.shovel.max-extra-blocks` | Maximum extra blocks broken per shovel use. |
 | `tools.axe.enabled` | Enables Fallen Treecapitator Axe. |
 | `tools.axe.max-logs` | Maximum connected logs broken per axe use. |
 | `tools.sellwand.enabled` | Enables Fallen Sell Wand. |

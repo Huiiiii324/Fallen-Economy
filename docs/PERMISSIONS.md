@@ -16,5 +16,6 @@
 | `falleneconomy.order.create` | `true` | Create orders with `/order create`. |
 | `falleneconomy.admin` | `op` | Use `/feconomy` admin commands. |
 | `falleneconomy.tools.pickaxe` | `true` | Use Fallen 3x3 Pickaxe. |
+| `falleneconomy.tools.shovel` | `true` | Use Fallen 3x3 Shovel. |
 | `falleneconomy.tools.axe` | `true` | Use Fallen Treecapitator Axe. |
 | `falleneconomy.tools.sellwand` | `true` | Use Fallen Sell Wand. |

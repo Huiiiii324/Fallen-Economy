@@ -32,6 +32,9 @@ tools:
   pickaxe:
     enabled: true
     max-extra-blocks: 8
+  shovel:
+    enabled: true
+    max-extra-blocks: 8
   axe:
     enabled: true
     max-logs: 128
