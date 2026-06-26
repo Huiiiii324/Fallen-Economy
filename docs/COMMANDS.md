@@ -19,4 +19,4 @@
 | `/order create <unitPrice> <amount>` | Create a funded `$` buy order. |
 | `/feconomy balance/give/take/set` | Manage `$`. |
 | `/feconomy essence balance/give/take/set` | Manage PlayerPoints Essence. |
-| `/feconomy tools give <player> <pickaxe|axe|sellwand> [amount]` | Give utility tools. |
+| `/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]` | Give utility tools. |
