@@ -51,8 +51,11 @@ Shop item clicks open a confirmation GUI with amount controls before money or Es
 | `/feconomy set <player> <amount>` | Sets a player's `$` balance. |
 | `/feconomy essence balance <player>` | Shows PlayerPoints Essence balance. |
 | `/feconomy essence give|take|set <player> <amount>` | Manages PlayerPoints Essence. |
-| `/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]` | Gives Fallen utility tools. |
-| `/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]` | Gives Fallen utility tools that expire after the given number of hours. |
+| `/feconomy tools give <player> <pickaxe|shovel|axe>` | Gives one non-timed Fallen utility tool. |
+| `/feconomy tools give timed <player> <pickaxe|shovel|axe> <hours>` | Gives one owner-bound timed tool. The timer only drains while the owner is online. |
+| `/feconomy tools give <player> sellwand <uses>` | Gives one Sell Wand with the given number of successful container sales. |
+
+Timed tools are bound to the player they were issued to. Another player can only become the owner if the current owner drops the tool from their inventory or if it drops from the owner on death. Taking it from a chest does not rebind ownership.
 
 ## Sort Modes
 

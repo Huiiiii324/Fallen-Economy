@@ -48,6 +48,8 @@ Utility tools:
 | `tools.axe.max-logs` | Maximum connected logs broken per axe use. |
 | `tools.sellwand.enabled` | Enables Fallen Sell Wand. |
 
+Timed pickaxe/shovel/axe ownership and remaining online-time are stored on the item itself, while owner online counters are stored in `tool-timers.yml`. Sell Wand uses are also stored on the item.
+
 Editable data files:
 
 - `buy-shop.yml`

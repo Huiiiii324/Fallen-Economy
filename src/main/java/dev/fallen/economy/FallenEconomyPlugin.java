@@ -39,18 +39,23 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Item;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerCommandPreprocessEvent;
+import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.EquipmentSlot;
@@ -78,6 +83,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private final Map<UUID, SortMode> buySorts = new HashMap<>();
   private final Map<UUID, ConfirmData> confirmations = new HashMap<>();
   private final Map<UUID, LastBlockFace> lastBlockFaces = new HashMap<>();
+  private final Map<UUID, Long> toolOnlineMillis = new HashMap<>();
+  private final Map<UUID, Long> toolOnlineSessionStartedAt = new HashMap<>();
   private final Set<Location> utilityBreakBlocks = new HashSet<>();
 
   private File buyShopFile;
@@ -86,6 +93,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private File auctionsFile;
   private File ordersFile;
   private File orderDeliveriesFile;
+  private File toolTimersFile;
   private File balancesFile;
   private EconomyBridge economy;
   private PlayerPointsEssenceBridge essence;
@@ -98,6 +106,12 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private String essenceName;
   private NamespacedKey toolKey;
   private NamespacedKey toolExpiresAtKey;
+  private NamespacedKey toolOwnerUuidKey;
+  private NamespacedKey toolOwnerNameKey;
+  private NamespacedKey toolTimerTotalMsKey;
+  private NamespacedKey toolTimerStartOwnerOnlineMsKey;
+  private NamespacedKey toolRebindTokenKey;
+  private NamespacedKey sellWandUsesKey;
 
   private static final String TOOL_PICKAXE = "pickaxe_3x3";
   private static final String TOOL_SHOVEL = "shovel_3x3";
@@ -109,6 +123,12 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     saveDefaultConfig();
     toolKey = new NamespacedKey(this, "tool");
     toolExpiresAtKey = new NamespacedKey(this, "tool_expires_at");
+    toolOwnerUuidKey = new NamespacedKey(this, "tool_owner_uuid");
+    toolOwnerNameKey = new NamespacedKey(this, "tool_owner_name");
+    toolTimerTotalMsKey = new NamespacedKey(this, "tool_timer_total_ms");
+    toolTimerStartOwnerOnlineMsKey = new NamespacedKey(this, "tool_timer_start_owner_online_ms");
+    toolRebindTokenKey = new NamespacedKey(this, "tool_rebind_token");
+    sellWandUsesKey = new NamespacedKey(this, "sellwand_uses_remaining");
     moneyName = getConfig().getString("money.name", getConfig().getString("currency-name", "$"));
     essenceName = getConfig().getString("essence.name", "Essence");
 
@@ -118,6 +138,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     auctionsFile = new File(getDataFolder(), "auctions.yml");
     ordersFile = new File(getDataFolder(), "orders.yml");
     orderDeliveriesFile = new File(getDataFolder(), "order-deliveries.yml");
+    toolTimersFile = new File(getDataFolder(), "tool-timers.yml");
     balancesFile = new File(getDataFolder(), getConfig().getString("money.storage-file", "money.yml"));
 
     saveBundledDataFile("buy-shop.yml");
@@ -134,6 +155,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     loadAuctions();
     loadOrders();
     loadOrderDeliveries();
+    loadToolTimers();
+    Bukkit.getOnlinePlayers().forEach(this::startToolTimerSession);
 
     Objects.requireNonNull(getCommand("shop")).setExecutor(this);
     Objects.requireNonNull(getCommand("shop")).setTabCompleter(this);
@@ -166,6 +189,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     saveAuctions();
     saveOrders();
     saveOrderDeliveries();
+    Bukkit.getOnlinePlayers().forEach(this::stopToolTimerSession);
+    saveToolTimers();
     if (vaultHook != null) vaultHook.unregister();
     if (economy instanceof InternalEconomyBridge internal) internal.save();
   }
@@ -215,10 +240,6 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) return;
     ItemStack hand = player.getInventory().getItemInMainHand();
     if (!isUtilityTool(hand, TOOL_SELL_WAND)) return;
-    if (expireUtilityToolIfNeeded(player, hand)) {
-      event.setCancelled(true);
-      return;
-    }
     if (!getConfig().getBoolean("tools.sellwand.enabled", true)) {
       player.sendMessage(color("&cSell Wand is disabled."));
       return;
@@ -229,15 +250,65 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
     if (!(event.getClickedBlock().getState() instanceof Container container)) return;
     event.setCancelled(true);
-    sellContainerContents(player, container.getInventory());
+    if (sellContainerContents(player, container.getInventory())) {
+      consumeSellWandUse(player, hand);
+    }
   }
 
   @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
   public void onTimedUtilityBlockBreak(BlockBreakEvent event) {
     ItemStack tool = event.getPlayer().getInventory().getItemInMainHand();
-    if (!isFallenUtilityTool(tool)) return;
-    if (!expireUtilityToolIfNeeded(event.getPlayer(), tool)) return;
+    if (!isTimedUtilityTool(tool)) return;
+    if (ensureTimedToolUsable(event.getPlayer(), tool)) return;
     event.setCancelled(true);
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onUtilityToolDrop(PlayerDropItemEvent event) {
+    Item item = event.getItemDrop();
+    ItemStack stack = item.getItemStack();
+    if (!isTimedUtilityTool(stack)) return;
+    migrateLegacyTimedTool(event.getPlayer(), stack);
+    if (!isTimedToolOwner(event.getPlayer(), stack)) {
+      removeStackRebindToken(stack);
+      item.getPersistentDataContainer().remove(toolRebindTokenKey);
+      item.setItemStack(stack);
+      return;
+    }
+    removeStackRebindToken(stack);
+    tagDroppedTimedToolForRebind(item, stack);
+    updateTimedToolLore(stack);
+    item.setItemStack(stack);
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR)
+  public void onUtilityToolDeath(PlayerDeathEvent event) {
+    Player player = event.getEntity();
+    for (ItemStack stack : event.getDrops()) {
+      if (!isTimedUtilityTool(stack)) continue;
+      migrateLegacyTimedTool(player, stack);
+      if (!isTimedToolOwner(player, stack)) continue;
+      tagTimedToolStackForRebind(stack);
+      updateTimedToolLore(stack);
+    }
+  }
+
+  @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+  public void onUtilityToolPickup(EntityPickupItemEvent event) {
+    if (!(event.getEntity() instanceof Player player)) return;
+    Item item = event.getItem();
+    ItemStack stack = item.getItemStack();
+    if (!isTimedUtilityTool(stack)) return;
+    if (isLegacyTimedTool(stack)) {
+      migrateLegacyTimedTool(player, stack);
+    }
+    if (hasValidRebindToken(item, stack)) {
+      rebindTimedTool(player, stack);
+      item.getPersistentDataContainer().remove(toolRebindTokenKey);
+      removeStackRebindToken(stack);
+    }
+    updateTimedToolLore(stack);
+    item.setItemStack(stack);
   }
 
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -750,8 +821,9 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       sender.sendMessage(color("&e/feconomy set <player> <amount>"));
       sender.sendMessage(color("&e/feconomy essence balance <player>"));
       sender.sendMessage(color("&e/feconomy essence give|take|set <player> <amount>"));
-      sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]"));
-      sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]"));
+      sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|shovel|axe>"));
+      sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe> <hours>"));
+      sender.sendMessage(color("&e/feconomy tools give <player> sellwand <uses>"));
       return true;
     }
     if (args[0].equalsIgnoreCase("essence")) {
@@ -811,25 +883,33 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private boolean handleAdminToolsCommand(CommandSender sender, String[] args) {
     if (args.length < 4 || !args[1].equalsIgnoreCase("give")) {
-      sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]"));
-      sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]"));
+      sendToolsHelp(sender);
       return true;
     }
     boolean timed = args[2].equalsIgnoreCase("timed") || args[2].equalsIgnoreCase("temp");
-    if (timed && args.length < 6) {
-      sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]"));
+    if (timed && args.length != 6) {
+      sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe> <hours>"));
       return true;
     }
     String targetName = timed ? args[3] : args[2];
     String toolName = timed ? args[4] : args[3];
+    if (!timed && toolName.equalsIgnoreCase("sellwand")) {
+      return giveLimitedSellWand(sender, args, targetName);
+    }
+    if (!timed && args.length != 4) {
+      sendToolsHelp(sender);
+      return true;
+    }
+    if (timed && isSellWandName(toolName)) {
+      sender.sendMessage(color("&cSell Wand uses charges instead of time. Use /feconomy tools give <player> sellwand <uses>."));
+      return true;
+    }
     Player target = Bukkit.getPlayerExact(targetName);
     if (target == null) {
       sender.sendMessage(color("&cPlayer must be online."));
       return true;
     }
-    int amount = 1;
     double hours = 0;
-    long expiresAt = 0;
     if (timed) {
       Double parsedHours = parseMoney(args[5]);
       if (parsedHours == null || parsedHours > 8760) {
@@ -837,28 +917,45 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         return true;
       }
       hours = parsedHours;
-      expiresAt = System.currentTimeMillis() + Math.max(1L, Math.round(hours * 60D * 60D * 1000D));
     }
-    int amountIndex = timed ? 6 : 4;
-    if (args.length > amountIndex) {
-      Integer parsedAmount = parseInt(args[amountIndex]);
-      if (parsedAmount == null || parsedAmount <= 0 || parsedAmount > 64) {
-        sender.sendMessage(color("&cAmount must be between 1 and 64."));
-        return true;
-      }
-      amount = parsedAmount;
-    }
-    ItemStack tool = createUtilityTool(toolName, 1, expiresAt, hours);
+    ItemStack tool = timed ? createTimedUtilityTool(toolName, target, hours) : createUtilityTool(toolName);
     if (tool == null) {
-      sender.sendMessage(color("&cUnknown tool. Use pickaxe, shovel, axe, or sellwand."));
+      sender.sendMessage(color("&cUnknown tool. Use pickaxe, shovel, or axe."));
       return true;
     }
-    giveUtilityTool(target, tool, amount);
+    giveOrDrop(target, tool);
     if (timed) {
-      sender.sendMessage(color("&aGave &f" + amount + "x " + displayItemName(tool) + " &ato &f" + target.getName() + " &afor &f" + format(hours) + " hour(s)&a."));
+      sender.sendMessage(color("&aGave &f" + displayItemName(tool) + " &ato &f" + target.getName() + " &afor &f" + format(hours) + " online hour(s)&a."));
     } else {
-      sender.sendMessage(color("&aGave &f" + amount + "x " + displayItemName(tool) + " &ato &f" + target.getName() + "&a."));
+      sender.sendMessage(color("&aGave &f" + displayItemName(tool) + " &ato &f" + target.getName() + "&a."));
     }
+    return true;
+  }
+
+  private void sendToolsHelp(CommandSender sender) {
+    sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|shovel|axe>"));
+    sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe> <hours>"));
+    sender.sendMessage(color("&e/feconomy tools give <player> sellwand <uses>"));
+  }
+
+  private boolean giveLimitedSellWand(CommandSender sender, String[] args, String targetName) {
+    if (args.length != 5) {
+      sender.sendMessage(color("&e/feconomy tools give <player> sellwand <uses>"));
+      return true;
+    }
+    Player target = Bukkit.getPlayerExact(targetName);
+    if (target == null) {
+      sender.sendMessage(color("&cPlayer must be online."));
+      return true;
+    }
+    Integer uses = parseInt(args[4]);
+    if (uses == null || uses <= 0 || uses > 1_000_000) {
+      sender.sendMessage(color("&cUses must be between 1 and 1000000."));
+      return true;
+    }
+    ItemStack tool = createSellWand(uses);
+    giveOrDrop(target, tool);
+    sender.sendMessage(color("&aGave &f" + displayItemName(tool) + " &ato &f" + target.getName() + " &awith &f" + uses + " use(s)&a."));
     return true;
   }
 
@@ -1198,82 +1295,81 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     return unitShopPrice(shopItem) * Math.max(1, amount);
   }
 
-  private void giveUtilityTool(Player target, ItemStack template, int amount) {
-    int remaining = Math.max(1, amount);
-    int maxStack = Math.max(1, template.getMaxStackSize());
-    while (remaining > 0) {
-      ItemStack stack = template.clone();
-      int stackAmount = Math.min(maxStack, remaining);
-      stack.setAmount(stackAmount);
-      giveOrDrop(target, stack);
-      remaining -= stackAmount;
-    }
-  }
-
-  private ItemStack createUtilityTool(String id, int amount) {
-    return createUtilityTool(id, amount, 0, 0);
-  }
-
-  private ItemStack createUtilityTool(String id, int amount, long expiresAt, double hours) {
+  private ItemStack createUtilityTool(String id) {
     String normalized = id.toLowerCase(Locale.ROOT);
-    return switch (normalized) {
-      case "pickaxe", "3x3", "3x3pickaxe" -> taggedTool(
-        Material.NETHERITE_PICKAXE,
-        amount,
-        TOOL_PICKAXE,
-        "&bFallen 3x3 Pickaxe",
-        List.of("&7Mines 3x3x1", "&8Fallen Utility Tool"),
-        expiresAt,
-        hours
-      );
-      case "shovel", "3x3shovel" -> taggedTool(
-        Material.NETHERITE_SHOVEL,
-        amount,
-        TOOL_SHOVEL,
-        "&bFallen 3x3 Shovel",
-        List.of("&7Digs 3x3x1", "&8Fallen Utility Tool"),
-        expiresAt,
-        hours
-      );
-      case "axe", "treecapitator", "treeaxe" -> taggedTool(
-        Material.NETHERITE_AXE,
-        amount,
-        TOOL_AXE,
-        "&bFallen Treecapitator Axe",
-        List.of("&7Breaks connected logs", "&8Fallen Utility Tool"),
-        expiresAt,
-        hours
-      );
-      case "sellwand", "wand", "sell_wand" -> taggedTool(
-        Material.STICK,
-        amount,
-        TOOL_SELL_WAND,
-        "&bFallen Sell Wand",
-        List.of("&7Right-click a container to sell contents", "&7Unlimited uses", "&8Fallen Utility Tool"),
-        expiresAt,
-        hours
-      );
+    String toolId = switch (normalized) {
+      case "pickaxe", "3x3", "3x3pickaxe" -> TOOL_PICKAXE;
+      case "shovel", "3x3shovel" -> TOOL_SHOVEL;
+      case "axe", "treecapitator", "treeaxe" -> TOOL_AXE;
       default -> null;
     };
+    return toolId == null ? null : taggedTool(toolId);
   }
 
-  private ItemStack taggedTool(Material material, int amount, String toolId, String name, List<String> lore, long expiresAt, double hours) {
-    ItemStack item = new ItemStack(material, Math.max(1, amount));
+  private ItemStack createTimedUtilityTool(String id, Player owner, double hours) {
+    ItemStack item = createUtilityTool(id);
+    if (item == null) return null;
+    long totalMillis = Math.max(1L, Math.round(hours * 60D * 60D * 1000D));
+    bindTimedTool(item, owner, totalMillis);
+    return item;
+  }
+
+  private ItemStack createSellWand(int uses) {
+    ItemStack item = taggedTool(TOOL_SELL_WAND);
     ItemMeta meta = item.getItemMeta();
     if (meta != null) {
-      meta.setDisplayName(color(name));
-      List<String> finalLore = new ArrayList<>(lore);
-      if (expiresAt > 0) {
-        finalLore.add("&7Timer: &f" + format(hours) + " hour(s)");
-      }
-      meta.setLore(finalLore.stream().map(FallenEconomyPlugin::color).toList());
+      meta.getPersistentDataContainer().set(sellWandUsesKey, PersistentDataType.INTEGER, Math.max(1, uses));
+      item.setItemMeta(meta);
+    }
+    updateSellWandLore(item);
+    return item;
+  }
+
+  private ItemStack taggedTool(String toolId) {
+    ItemStack item = new ItemStack(toolMaterial(toolId));
+    ItemMeta meta = item.getItemMeta();
+    if (meta != null) {
+      meta.setDisplayName(color(toolName(toolId)));
+      meta.setLore(baseToolLore(toolId).stream().map(FallenEconomyPlugin::color).toList());
       meta.getPersistentDataContainer().set(toolKey, PersistentDataType.STRING, toolId);
-      if (expiresAt > 0) {
-        meta.getPersistentDataContainer().set(toolExpiresAtKey, PersistentDataType.LONG, expiresAt);
-      }
       item.setItemMeta(meta);
     }
     return item;
+  }
+
+  private boolean isSellWandName(String id) {
+    String normalized = id.toLowerCase(Locale.ROOT);
+    return normalized.equals("sellwand") || normalized.equals("wand") || normalized.equals("sell_wand");
+  }
+
+  private Material toolMaterial(String toolId) {
+    return switch (toolId) {
+      case TOOL_PICKAXE -> Material.NETHERITE_PICKAXE;
+      case TOOL_SHOVEL -> Material.NETHERITE_SHOVEL;
+      case TOOL_AXE -> Material.NETHERITE_AXE;
+      case TOOL_SELL_WAND -> Material.STICK;
+      default -> Material.STICK;
+    };
+  }
+
+  private String toolName(String toolId) {
+    return switch (toolId) {
+      case TOOL_PICKAXE -> "&bFallen 3x3 Pickaxe";
+      case TOOL_SHOVEL -> "&bFallen 3x3 Shovel";
+      case TOOL_AXE -> "&bFallen Treecapitator Axe";
+      case TOOL_SELL_WAND -> "&bFallen Sell Wand";
+      default -> "&bFallen Tool";
+    };
+  }
+
+  private List<String> baseToolLore(String toolId) {
+    return switch (toolId) {
+      case TOOL_PICKAXE -> List.of("&7Mines 3x3x1", "&8Fallen Utility Tool");
+      case TOOL_SHOVEL -> List.of("&7Digs 3x3x1", "&8Fallen Utility Tool");
+      case TOOL_AXE -> List.of("&7Breaks connected logs", "&8Fallen Utility Tool");
+      case TOOL_SELL_WAND -> List.of("&7Right-click a container to sell contents", "&8Fallen Utility Tool");
+      default -> List.of("&8Fallen Utility Tool");
+    };
   }
 
   private boolean isFallenUtilityTool(ItemStack item) {
@@ -1289,15 +1385,238 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     return toolId.equals(meta.getPersistentDataContainer().get(toolKey, PersistentDataType.STRING));
   }
 
-  private boolean expireUtilityToolIfNeeded(Player player, ItemStack item) {
+  private boolean isTimedUtilityTool(ItemStack item) {
     if (!isFallenUtilityTool(item)) return false;
+    String toolId = toolId(item);
+    if (TOOL_SELL_WAND.equals(toolId)) return false;
     ItemMeta meta = item.getItemMeta();
     if (meta == null) return false;
+    return meta.getPersistentDataContainer().has(toolTimerTotalMsKey, PersistentDataType.LONG) || isLegacyTimedTool(item);
+  }
+
+  private boolean isLegacyTimedTool(ItemStack item) {
+    if (!isFallenUtilityTool(item) || !item.hasItemMeta()) return false;
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return false;
+    return meta.getPersistentDataContainer().has(toolExpiresAtKey, PersistentDataType.LONG) &&
+      !meta.getPersistentDataContainer().has(toolOwnerUuidKey, PersistentDataType.STRING);
+  }
+
+  private String toolId(ItemStack item) {
+    if (!isFallenUtilityTool(item)) return "";
+    ItemMeta meta = item.getItemMeta();
+    return meta == null ? "" : meta.getPersistentDataContainer().getOrDefault(toolKey, PersistentDataType.STRING, "");
+  }
+
+  private void bindTimedTool(ItemStack item, Player owner, long totalMillis) {
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return;
+    meta.getPersistentDataContainer().set(toolOwnerUuidKey, PersistentDataType.STRING, owner.getUniqueId().toString());
+    meta.getPersistentDataContainer().set(toolOwnerNameKey, PersistentDataType.STRING, owner.getName());
+    meta.getPersistentDataContainer().set(toolTimerTotalMsKey, PersistentDataType.LONG, Math.max(1L, totalMillis));
+    meta.getPersistentDataContainer().set(toolTimerStartOwnerOnlineMsKey, PersistentDataType.LONG, ownerOnlineMillis(owner.getUniqueId()));
+    meta.getPersistentDataContainer().remove(toolExpiresAtKey);
+    meta.getPersistentDataContainer().remove(toolRebindTokenKey);
+    item.setItemMeta(meta);
+    updateTimedToolLore(item);
+  }
+
+  private void migrateLegacyTimedTool(Player owner, ItemStack item) {
+    if (!isLegacyTimedTool(item)) return;
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return;
     Long expiresAt = meta.getPersistentDataContainer().get(toolExpiresAtKey, PersistentDataType.LONG);
-    if (expiresAt == null || expiresAt <= 0 || System.currentTimeMillis() < expiresAt) return false;
-    player.getInventory().setItemInMainHand(null);
-    player.sendMessage(color("&cThis Fallen tool has expired."));
+    long remaining = expiresAt == null ? 0 : expiresAt - System.currentTimeMillis();
+    bindTimedTool(item, owner, Math.max(1L, remaining));
+  }
+
+  private boolean ensureTimedToolUsable(Player player, ItemStack item) {
+    migrateLegacyTimedTool(player, item);
+    if (!isTimedUtilityTool(item)) return true;
+    if (!isTimedToolOwner(player, item)) {
+      player.sendMessage(color("&cThis Fallen tool belongs to &f" + timedToolOwnerName(item) + "&c."));
+      return false;
+    }
+    if (timedToolRemainingMillis(item) <= 0) {
+      player.getInventory().setItemInMainHand(null);
+      player.sendMessage(color("&cThis Fallen tool has expired."));
+      return false;
+    }
+    updateTimedToolLore(item);
     return true;
+  }
+
+  private boolean isTimedToolOwner(Player player, ItemStack item) {
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return false;
+    String owner = meta.getPersistentDataContainer().get(toolOwnerUuidKey, PersistentDataType.STRING);
+    return player.getUniqueId().toString().equals(owner);
+  }
+
+  private String timedToolOwnerName(ItemStack item) {
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return "Unknown";
+    return meta.getPersistentDataContainer().getOrDefault(toolOwnerNameKey, PersistentDataType.STRING, "Unknown");
+  }
+
+  private UUID timedToolOwnerId(ItemStack item) {
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return null;
+    String raw = meta.getPersistentDataContainer().get(toolOwnerUuidKey, PersistentDataType.STRING);
+    if (raw == null || raw.isBlank()) return null;
+    try {
+      return UUID.fromString(raw);
+    } catch (IllegalArgumentException exception) {
+      return null;
+    }
+  }
+
+  private long timedToolRemainingMillis(ItemStack item) {
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return 0;
+    Long total = meta.getPersistentDataContainer().get(toolTimerTotalMsKey, PersistentDataType.LONG);
+    Long start = meta.getPersistentDataContainer().get(toolTimerStartOwnerOnlineMsKey, PersistentDataType.LONG);
+    UUID owner = timedToolOwnerId(item);
+    if (total == null || start == null || owner == null) return 0;
+    long elapsed = Math.max(0L, ownerOnlineMillis(owner) - start);
+    return Math.max(0L, total - elapsed);
+  }
+
+  private void rebindTimedTool(Player newOwner, ItemStack item) {
+    long remaining = Math.max(1L, timedToolRemainingMillis(item));
+    bindTimedTool(item, newOwner, remaining);
+  }
+
+  private void tagDroppedTimedToolForRebind(Item itemEntity, ItemStack stack) {
+    String owner = ownerToken(stack);
+    if (owner == null) return;
+    itemEntity.getPersistentDataContainer().set(toolRebindTokenKey, PersistentDataType.STRING, owner);
+  }
+
+  private void tagTimedToolStackForRebind(ItemStack stack) {
+    String owner = ownerToken(stack);
+    if (owner == null) return;
+    ItemMeta meta = stack.getItemMeta();
+    if (meta == null) return;
+    meta.getPersistentDataContainer().set(toolRebindTokenKey, PersistentDataType.STRING, owner);
+    stack.setItemMeta(meta);
+  }
+
+  private boolean hasValidRebindToken(Item itemEntity, ItemStack stack) {
+    String owner = ownerToken(stack);
+    if (owner == null) return false;
+    String entityToken = itemEntity.getPersistentDataContainer().get(toolRebindTokenKey, PersistentDataType.STRING);
+    if (owner.equals(entityToken)) return true;
+    ItemMeta meta = stack.getItemMeta();
+    if (meta == null) return false;
+    return owner.equals(meta.getPersistentDataContainer().get(toolRebindTokenKey, PersistentDataType.STRING));
+  }
+
+  private String ownerToken(ItemStack stack) {
+    ItemMeta meta = stack.getItemMeta();
+    return meta == null ? null : meta.getPersistentDataContainer().get(toolOwnerUuidKey, PersistentDataType.STRING);
+  }
+
+  private void removeStackRebindToken(ItemStack stack) {
+    ItemMeta meta = stack.getItemMeta();
+    if (meta == null) return;
+    meta.getPersistentDataContainer().remove(toolRebindTokenKey);
+    stack.setItemMeta(meta);
+  }
+
+  private void updateTimedToolLore(ItemStack item) {
+    String toolId = toolId(item);
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return;
+    List<String> lore = new ArrayList<>(baseToolLore(toolId));
+    lore.add("&7Owner: &f" + timedToolOwnerName(item));
+    lore.add("&7Time Left: &f" + formatDuration(timedToolRemainingMillis(item)));
+    meta.setLore(lore.stream().map(FallenEconomyPlugin::color).toList());
+    item.setItemMeta(meta);
+  }
+
+  private void updateSellWandLore(ItemStack item) {
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return;
+    Integer uses = meta.getPersistentDataContainer().get(sellWandUsesKey, PersistentDataType.INTEGER);
+    List<String> lore = new ArrayList<>(baseToolLore(TOOL_SELL_WAND));
+    lore.add("&7Uses: &f" + (uses == null ? "Unlimited" : uses));
+    meta.setLore(lore.stream().map(FallenEconomyPlugin::color).toList());
+    item.setItemMeta(meta);
+  }
+
+  private void consumeSellWandUse(Player player, ItemStack item) {
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return;
+    Integer uses = meta.getPersistentDataContainer().get(sellWandUsesKey, PersistentDataType.INTEGER);
+    if (uses == null) return;
+    int remaining = uses - 1;
+    if (remaining <= 0) {
+      player.getInventory().setItemInMainHand(null);
+      player.sendMessage(color("&cYour Fallen Sell Wand has no uses left."));
+      return;
+    }
+    meta.getPersistentDataContainer().set(sellWandUsesKey, PersistentDataType.INTEGER, remaining);
+    item.setItemMeta(meta);
+    updateSellWandLore(item);
+  }
+
+  private String formatDuration(long millis) {
+    if (millis <= 0) return "expired";
+    long totalMinutes = Math.max(1L, (millis + 59_999L) / 60_000L);
+    long hours = totalMinutes / 60L;
+    long minutes = totalMinutes % 60L;
+    if (hours <= 0) return minutes + "m";
+    if (minutes <= 0) return hours + "h";
+    return hours + "h " + minutes + "m";
+  }
+
+  private void loadToolTimers() {
+    toolOnlineMillis.clear();
+    FileConfiguration config = YamlConfiguration.loadConfiguration(toolTimersFile);
+    ConfigurationSection section = config.getConfigurationSection("players");
+    if (section == null) return;
+    for (String key : section.getKeys(false)) {
+      try {
+        UUID uuid = UUID.fromString(key);
+        toolOnlineMillis.put(uuid, Math.max(0L, section.getLong(key + ".online-ms", 0L)));
+      } catch (IllegalArgumentException ignored) {
+        // Ignore malformed UUID rows written by hand.
+      }
+    }
+  }
+
+  private void saveToolTimers() {
+    FileConfiguration config = new YamlConfiguration();
+    for (Map.Entry<UUID, Long> entry : toolOnlineMillis.entrySet()) {
+      long onlineMs = Math.max(0L, ownerOnlineMillis(entry.getKey()));
+      config.set("players." + entry.getKey() + ".online-ms", onlineMs);
+    }
+    try {
+      config.save(toolTimersFile);
+    } catch (Exception exception) {
+      getLogger().severe("Failed to save tool-timers.yml: " + exception.getMessage());
+    }
+  }
+
+  private void startToolTimerSession(Player player) {
+    toolOnlineSessionStartedAt.putIfAbsent(player.getUniqueId(), System.currentTimeMillis());
+    toolOnlineMillis.putIfAbsent(player.getUniqueId(), 0L);
+  }
+
+  private void stopToolTimerSession(Player player) {
+    UUID uuid = player.getUniqueId();
+    Long startedAt = toolOnlineSessionStartedAt.remove(uuid);
+    if (startedAt == null) return;
+    long elapsed = Math.max(0L, System.currentTimeMillis() - startedAt);
+    toolOnlineMillis.put(uuid, Math.max(0L, toolOnlineMillis.getOrDefault(uuid, 0L)) + elapsed);
+  }
+
+  private long ownerOnlineMillis(UUID owner) {
+    long stored = Math.max(0L, toolOnlineMillis.getOrDefault(owner, 0L));
+    Long startedAt = toolOnlineSessionStartedAt.get(owner);
+    if (startedAt == null) return stored;
+    return stored + Math.max(0L, System.currentTimeMillis() - startedAt);
   }
 
   private void sellHand(Player player) {
@@ -1363,7 +1682,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     player.sendMessage(color("&aSold &f" + amount + "x " + niceMaterial(material) + " &afor &f" + format(total) + " " + moneyName + "&a."));
   }
 
-  private void sellContainerContents(Player player, Inventory inventory) {
+  private boolean sellContainerContents(Player player, Inventory inventory) {
     double total = 0;
     int soldItems = 0;
     for (int slot = 0; slot < inventory.getSize(); slot++) {
@@ -1377,10 +1696,11 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     }
     if (total <= 0) {
       player.sendMessage(color("&cThis container has no sellable items."));
-      return;
+      return false;
     }
     economy.deposit(player, total);
     player.sendMessage(color("&aSold &f" + soldItems + " &aitem(s) from the container for &f" + format(total) + " " + moneyName + "&a."));
+    return true;
   }
 
   private void handlePickaxeBreak(Player player, Block origin, ItemStack tool) {
@@ -2102,7 +2422,14 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   @EventHandler
   public void onPlayerJoin(PlayerJoinEvent event) {
+    startToolTimerSession(event.getPlayer());
     deliverPendingOrderItems(event.getPlayer());
+  }
+
+  @EventHandler
+  public void onPlayerQuit(PlayerQuitEvent event) {
+    stopToolTimerSession(event.getPlayer());
+    saveToolTimers();
   }
 
   private List<Map.Entry<Material, Double>> sortedSellValues() {
@@ -2643,10 +2970,13 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         return filter(List.of("pickaxe", "shovel", "axe", "sellwand"), args[3]);
       }
       if (args.length == 5 && args[0].equalsIgnoreCase("tools") && args[1].equalsIgnoreCase("give") && (args[2].equalsIgnoreCase("timed") || args[2].equalsIgnoreCase("temp"))) {
-        return filter(List.of("pickaxe", "shovel", "axe", "sellwand"), args[4]);
+        return filter(List.of("pickaxe", "shovel", "axe"), args[4]);
       }
       if (args.length == 6 && args[0].equalsIgnoreCase("tools") && args[1].equalsIgnoreCase("give") && (args[2].equalsIgnoreCase("timed") || args[2].equalsIgnoreCase("temp"))) {
         return filter(List.of("1", "6", "12", "24", "48", "72", "168"), args[5]);
+      }
+      if (args.length == 5 && args[0].equalsIgnoreCase("tools") && args[1].equalsIgnoreCase("give") && args[3].equalsIgnoreCase("sellwand")) {
+        return filter(List.of("5", "10", "25", "50", "100"), args[4]);
       }
     }
     return List.of();
