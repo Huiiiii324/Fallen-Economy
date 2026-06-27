@@ -2330,6 +2330,9 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private ItemStack buyIcon(BuyShopItem shopItem, boolean configView) {
     ItemStack icon = shopItem.item.clone();
+    if (!configView && shopItem.currency == ShopCurrency.MONEY) {
+      icon.setAmount(Math.max(1, icon.getMaxStackSize()));
+    }
     ItemMeta meta = icon.getItemMeta();
     if (meta != null) {
       List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();

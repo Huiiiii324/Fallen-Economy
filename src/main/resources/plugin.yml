@@ -1,5 +1,5 @@
 name: FallenEconomy
-version: 1.4.6
+version: 1.4.7
 main: dev.fallen.economy.FallenEconomyPlugin
 api-version: '1.21'
 authors:
