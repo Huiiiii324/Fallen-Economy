@@ -2092,13 +2092,11 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     addAmountButton(inv, holder, 9, -64);
     addAmountButton(inv, holder, 10, -32);
     addAmountButton(inv, holder, 11, -16);
-    addAmountButton(inv, holder, 12, -8);
-    addAmountButton(inv, holder, 13, -1);
+    addAmountButton(inv, holder, 12, -1);
     addAmountButton(inv, holder, 14, 1);
-    addAmountButton(inv, holder, 15, 8);
-    addAmountButton(inv, holder, 16, 16);
-    addAmountButton(inv, holder, 17, 32);
-    addAmountButton(inv, holder, 18, 64);
+    addAmountButton(inv, holder, 15, 16);
+    addAmountButton(inv, holder, 16, 32);
+    addAmountButton(inv, holder, 17, 64);
     inv.setItem(22, navItem(Material.LIME_CONCRETE, "&aBuy"));
     inv.setItem(24, navItem(Material.RED_CONCRETE, "&cDo Not Buy"));
     redrawShopConfirm(holder);
@@ -2117,7 +2115,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private void redrawShopConfirm(ShopConfirmHolder holder) {
     BuyShopItem shopItem = shopSource(holder.sourceType).get(holder.itemId);
     if (shopItem == null || holder.inventory == null) return;
-    holder.inventory.setItem(4, confirmShopIcon(shopItem, holder.amount));
+    holder.inventory.setItem(13, confirmShopIcon(shopItem, holder.amount));
     double totalPrice = shopPriceForAmount(shopItem, holder.amount);
     holder.inventory.setItem(22, navItem(Material.LIME_CONCRETE, "&aBuy &f" + holder.amount + "x &7(" + format(totalPrice) + " " + currencyLabel(shopItem.currency) + ")"));
   }
