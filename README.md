@@ -34,6 +34,14 @@ Vault is optional and exposes only `$`. PlayerPoints is optional for server star
 
 Shop item clicks open a confirmation GUI first. Players can choose the purchase amount with `-1`, `+1`, `-8`, `+8`, `-16`, `+16`, `-32`, `+32`, `-64`, and `+64`, then buy or cancel.
 
+Utility tools can also be issued with an hour-based timer:
+
+```text
+/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]
+```
+
+Timed pickaxes, shovels, and axes still use normal Minecraft durability. Expired Fallen tools are removed when the player tries to use them.
+
 ## Fallen Kill Effects
 
 `FallenKillEffects.jar` adds `/killeffects` and `/killeffect`.

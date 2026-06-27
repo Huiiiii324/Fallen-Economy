@@ -23,6 +23,8 @@
 | `/order create <unitPrice> <amount>` | Create a funded `$` buy order. |
 | `/feconomy balance/give/take/set` | Manage `$`. |
 | `/feconomy essence balance/give/take/set` | Manage PlayerPoints Essence. |
+| `/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]` | Give Fallen utility tools. |
+| `/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]` | Give Fallen utility tools that expire after the given number of hours. |
 | `/killeffects`, `/killeffect` | Open the kill effects GUI. |
 | `/killeffects clear` | Disable selected kill effect. |
 | `/killeffects reload` | Reload kill effects config. |
