@@ -97,6 +97,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private String moneyName;
   private String essenceName;
   private NamespacedKey toolKey;
+  private NamespacedKey toolExpiresAtKey;
 
   private static final String TOOL_PICKAXE = "pickaxe_3x3";
   private static final String TOOL_SHOVEL = "shovel_3x3";
@@ -107,6 +108,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   public void onEnable() {
     saveDefaultConfig();
     toolKey = new NamespacedKey(this, "tool");
+    toolExpiresAtKey = new NamespacedKey(this, "tool_expires_at");
     moneyName = getConfig().getString("money.name", getConfig().getString("currency-name", "$"));
     essenceName = getConfig().getString("essence.name", "Essence");
 
@@ -213,6 +215,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     if (event.getAction() != Action.RIGHT_CLICK_BLOCK || event.getClickedBlock() == null) return;
     ItemStack hand = player.getInventory().getItemInMainHand();
     if (!isUtilityTool(hand, TOOL_SELL_WAND)) return;
+    if (expireUtilityToolIfNeeded(player, hand)) {
+      event.setCancelled(true);
+      return;
+    }
     if (!getConfig().getBoolean("tools.sellwand.enabled", true)) {
       player.sendMessage(color("&cSell Wand is disabled."));
       return;
@@ -224,6 +230,14 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     if (!(event.getClickedBlock().getState() instanceof Container container)) return;
     event.setCancelled(true);
     sellContainerContents(player, container.getInventory());
+  }
+
+  @EventHandler(priority = EventPriority.HIGHEST, ignoreCancelled = false)
+  public void onTimedUtilityBlockBreak(BlockBreakEvent event) {
+    ItemStack tool = event.getPlayer().getInventory().getItemInMainHand();
+    if (!isFallenUtilityTool(tool)) return;
+    if (!expireUtilityToolIfNeeded(event.getPlayer(), tool)) return;
+    event.setCancelled(true);
   }
 
   @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
@@ -737,6 +751,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       sender.sendMessage(color("&e/feconomy essence balance <player>"));
       sender.sendMessage(color("&e/feconomy essence give|take|set <player> <amount>"));
       sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]"));
+      sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]"));
       return true;
     }
     if (args[0].equalsIgnoreCase("essence")) {
@@ -797,29 +812,53 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private boolean handleAdminToolsCommand(CommandSender sender, String[] args) {
     if (args.length < 4 || !args[1].equalsIgnoreCase("give")) {
       sender.sendMessage(color("&e/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]"));
+      sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]"));
       return true;
     }
-    Player target = Bukkit.getPlayerExact(args[2]);
+    boolean timed = args[2].equalsIgnoreCase("timed") || args[2].equalsIgnoreCase("temp");
+    if (timed && args.length < 6) {
+      sender.sendMessage(color("&e/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]"));
+      return true;
+    }
+    String targetName = timed ? args[3] : args[2];
+    String toolName = timed ? args[4] : args[3];
+    Player target = Bukkit.getPlayerExact(targetName);
     if (target == null) {
       sender.sendMessage(color("&cPlayer must be online."));
       return true;
     }
     int amount = 1;
-    if (args.length >= 5) {
-      Integer parsedAmount = parseInt(args[4]);
+    double hours = 0;
+    long expiresAt = 0;
+    if (timed) {
+      Double parsedHours = parseMoney(args[5]);
+      if (parsedHours == null || parsedHours > 8760) {
+        sender.sendMessage(color("&cHours must be greater than 0 and no more than 8760."));
+        return true;
+      }
+      hours = parsedHours;
+      expiresAt = System.currentTimeMillis() + Math.max(1L, Math.round(hours * 60D * 60D * 1000D));
+    }
+    int amountIndex = timed ? 6 : 4;
+    if (args.length > amountIndex) {
+      Integer parsedAmount = parseInt(args[amountIndex]);
       if (parsedAmount == null || parsedAmount <= 0 || parsedAmount > 64) {
         sender.sendMessage(color("&cAmount must be between 1 and 64."));
         return true;
       }
       amount = parsedAmount;
     }
-    ItemStack tool = createUtilityTool(args[3], amount);
+    ItemStack tool = createUtilityTool(toolName, 1, expiresAt, hours);
     if (tool == null) {
       sender.sendMessage(color("&cUnknown tool. Use pickaxe, shovel, axe, or sellwand."));
       return true;
     }
-    giveOrDrop(target, tool);
-    sender.sendMessage(color("&aGave &f" + amount + "x " + displayItemName(tool) + " &ato &f" + target.getName() + "&a."));
+    giveUtilityTool(target, tool, amount);
+    if (timed) {
+      sender.sendMessage(color("&aGave &f" + amount + "x " + displayItemName(tool) + " &ato &f" + target.getName() + " &afor &f" + format(hours) + " hour(s)&a."));
+    } else {
+      sender.sendMessage(color("&aGave &f" + amount + "x " + displayItemName(tool) + " &ato &f" + target.getName() + "&a."));
+    }
     return true;
   }
 
@@ -1159,7 +1198,23 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     return unitShopPrice(shopItem) * Math.max(1, amount);
   }
 
+  private void giveUtilityTool(Player target, ItemStack template, int amount) {
+    int remaining = Math.max(1, amount);
+    int maxStack = Math.max(1, template.getMaxStackSize());
+    while (remaining > 0) {
+      ItemStack stack = template.clone();
+      int stackAmount = Math.min(maxStack, remaining);
+      stack.setAmount(stackAmount);
+      giveOrDrop(target, stack);
+      remaining -= stackAmount;
+    }
+  }
+
   private ItemStack createUtilityTool(String id, int amount) {
+    return createUtilityTool(id, amount, 0, 0);
+  }
+
+  private ItemStack createUtilityTool(String id, int amount, long expiresAt, double hours) {
     String normalized = id.toLowerCase(Locale.ROOT);
     return switch (normalized) {
       case "pickaxe", "3x3", "3x3pickaxe" -> taggedTool(
@@ -1167,43 +1222,64 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         amount,
         TOOL_PICKAXE,
         "&bFallen 3x3 Pickaxe",
-        List.of("&7Mines 3x3x1", "&8Fallen Utility Tool")
+        List.of("&7Mines 3x3x1", "&8Fallen Utility Tool"),
+        expiresAt,
+        hours
       );
       case "shovel", "3x3shovel" -> taggedTool(
         Material.NETHERITE_SHOVEL,
         amount,
         TOOL_SHOVEL,
         "&bFallen 3x3 Shovel",
-        List.of("&7Digs 3x3x1", "&8Fallen Utility Tool")
+        List.of("&7Digs 3x3x1", "&8Fallen Utility Tool"),
+        expiresAt,
+        hours
       );
       case "axe", "treecapitator", "treeaxe" -> taggedTool(
         Material.NETHERITE_AXE,
         amount,
         TOOL_AXE,
         "&bFallen Treecapitator Axe",
-        List.of("&7Breaks connected logs", "&8Fallen Utility Tool")
+        List.of("&7Breaks connected logs", "&8Fallen Utility Tool"),
+        expiresAt,
+        hours
       );
       case "sellwand", "wand", "sell_wand" -> taggedTool(
         Material.STICK,
         amount,
         TOOL_SELL_WAND,
         "&bFallen Sell Wand",
-        List.of("&7Right-click a container to sell contents", "&7Unlimited uses", "&8Fallen Utility Tool")
+        List.of("&7Right-click a container to sell contents", "&7Unlimited uses", "&8Fallen Utility Tool"),
+        expiresAt,
+        hours
       );
       default -> null;
     };
   }
 
-  private ItemStack taggedTool(Material material, int amount, String toolId, String name, List<String> lore) {
+  private ItemStack taggedTool(Material material, int amount, String toolId, String name, List<String> lore, long expiresAt, double hours) {
     ItemStack item = new ItemStack(material, Math.max(1, amount));
     ItemMeta meta = item.getItemMeta();
     if (meta != null) {
       meta.setDisplayName(color(name));
-      meta.setLore(lore.stream().map(FallenEconomyPlugin::color).toList());
+      List<String> finalLore = new ArrayList<>(lore);
+      if (expiresAt > 0) {
+        finalLore.add("&7Timer: &f" + format(hours) + " hour(s)");
+      }
+      meta.setLore(finalLore.stream().map(FallenEconomyPlugin::color).toList());
       meta.getPersistentDataContainer().set(toolKey, PersistentDataType.STRING, toolId);
+      if (expiresAt > 0) {
+        meta.getPersistentDataContainer().set(toolExpiresAtKey, PersistentDataType.LONG, expiresAt);
+      }
       item.setItemMeta(meta);
     }
     return item;
+  }
+
+  private boolean isFallenUtilityTool(ItemStack item) {
+    if (item == null || item.getType().isAir() || !item.hasItemMeta()) return false;
+    ItemMeta meta = item.getItemMeta();
+    return meta != null && meta.getPersistentDataContainer().has(toolKey, PersistentDataType.STRING);
   }
 
   private boolean isUtilityTool(ItemStack item, String toolId) {
@@ -1211,6 +1287,17 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     ItemMeta meta = item.getItemMeta();
     if (meta == null) return false;
     return toolId.equals(meta.getPersistentDataContainer().get(toolKey, PersistentDataType.STRING));
+  }
+
+  private boolean expireUtilityToolIfNeeded(Player player, ItemStack item) {
+    if (!isFallenUtilityTool(item)) return false;
+    ItemMeta meta = item.getItemMeta();
+    if (meta == null) return false;
+    Long expiresAt = meta.getPersistentDataContainer().get(toolExpiresAtKey, PersistentDataType.LONG);
+    if (expiresAt == null || expiresAt <= 0 || System.currentTimeMillis() < expiresAt) return false;
+    player.getInventory().setItemInMainHand(null);
+    player.sendMessage(color("&cThis Fallen tool has expired."));
+    return true;
   }
 
   private void sellHand(Player player) {
@@ -2538,13 +2625,28 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       if (args.length == 2 && args[0].equalsIgnoreCase("essence")) return filter(List.of("balance", "give", "take", "set"), args[1]);
       if (args.length == 2 && args[0].equalsIgnoreCase("tools")) return filter(List.of("give"), args[1]);
       if (args.length == 3 && args[0].equalsIgnoreCase("tools") && args[1].equalsIgnoreCase("give")) {
-        return Bukkit.getOnlinePlayers().stream()
+        List<String> values = new ArrayList<>();
+        values.add("timed");
+        values.addAll(Bukkit.getOnlinePlayers().stream()
           .map(Player::getName)
           .filter(playerName -> playerName.toLowerCase(Locale.ROOT).startsWith(args[2].toLowerCase(Locale.ROOT)))
-          .toList();
+          .toList());
+        return filter(values, args[2]);
       }
       if (args.length == 4 && args[0].equalsIgnoreCase("tools") && args[1].equalsIgnoreCase("give")) {
+        if (args[2].equalsIgnoreCase("timed") || args[2].equalsIgnoreCase("temp")) {
+          return Bukkit.getOnlinePlayers().stream()
+            .map(Player::getName)
+            .filter(playerName -> playerName.toLowerCase(Locale.ROOT).startsWith(args[3].toLowerCase(Locale.ROOT)))
+            .toList();
+        }
         return filter(List.of("pickaxe", "shovel", "axe", "sellwand"), args[3]);
+      }
+      if (args.length == 5 && args[0].equalsIgnoreCase("tools") && args[1].equalsIgnoreCase("give") && (args[2].equalsIgnoreCase("timed") || args[2].equalsIgnoreCase("temp"))) {
+        return filter(List.of("pickaxe", "shovel", "axe", "sellwand"), args[4]);
+      }
+      if (args.length == 6 && args[0].equalsIgnoreCase("tools") && args[1].equalsIgnoreCase("give") && (args[2].equalsIgnoreCase("timed") || args[2].equalsIgnoreCase("temp"))) {
+        return filter(List.of("1", "6", "12", "24", "48", "72", "168"), args[5]);
       }
     }
     return List.of();

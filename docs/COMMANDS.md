@@ -7,8 +7,6 @@
 | `/shop` | Opens native shop categories. |
 | `/shop <end|nether|gear|food>` | Opens a `$` shop category. |
 | `/shop sort <mode>` | Sets shop sort mode. |
-
-Shop item clicks open a confirmation GUI with amount controls before money or Essence is withdrawn.
 | `/essence` | Shows PlayerPoints Essence balance. |
 | `/essenceshop` | Opens the Essence shop, currently spawners. |
 | `/essenceshop <category>` | Opens an Essence shop category. |
@@ -32,6 +30,8 @@ Shop item clicks open a confirmation GUI with amount controls before money or Es
 | `/order sort <mode>` | Sets order sort mode. |
 | `/order cancel <id>` | Cancels one of your buy orders and refunds remaining escrow. |
 
+Shop item clicks open a confirmation GUI with amount controls before money or Essence is withdrawn.
+
 ## Admin Commands
 
 | Command | Description |
@@ -52,6 +52,7 @@ Shop item clicks open a confirmation GUI with amount controls before money or Es
 | `/feconomy essence balance <player>` | Shows PlayerPoints Essence balance. |
 | `/feconomy essence give|take|set <player> <amount>` | Manages PlayerPoints Essence. |
 | `/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]` | Gives Fallen utility tools. |
+| `/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]` | Gives Fallen utility tools that expire after the given number of hours. |
 
 ## Sort Modes
 
