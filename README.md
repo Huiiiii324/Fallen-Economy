@@ -34,13 +34,15 @@ Vault is optional and exposes only `$`. PlayerPoints is optional for server star
 
 Shop item clicks open a confirmation GUI first. Players can choose the purchase amount with `-1`, `+1`, `-8`, `+8`, `-16`, `+16`, `-32`, `+32`, `-64`, and `+64`, then buy or cancel.
 
-Utility tools can also be issued with an hour-based timer:
+Utility tools can be issued as normal tools, owner-bound timed tools, or limited-use Sell Wands:
 
 ```text
-/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]
+/feconomy tools give <player> <pickaxe|shovel|axe>
+/feconomy tools give timed <player> <pickaxe|shovel|axe> <hours>
+/feconomy tools give <player> sellwand <uses>
 ```
 
-Timed pickaxes, shovels, and axes still use normal Minecraft durability. Expired Fallen tools are removed when the player tries to use them.
+Timed pickaxes, shovels, and axes are bound to the issued owner and only drain while that owner is online. Ownership can transfer only when the owner drops the tool or loses it on death. Sell Wand uses are consumed only after a successful container sale.
 
 ## Fallen Kill Effects
 

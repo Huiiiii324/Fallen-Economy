@@ -23,10 +23,13 @@
 | `/order create <unitPrice> <amount>` | Create a funded `$` buy order. |
 | `/feconomy balance/give/take/set` | Manage `$`. |
 | `/feconomy essence balance/give/take/set` | Manage PlayerPoints Essence. |
-| `/feconomy tools give <player> <pickaxe|shovel|axe|sellwand> [amount]` | Give Fallen utility tools. |
-| `/feconomy tools give timed <player> <pickaxe|shovel|axe|sellwand> <hours> [amount]` | Give Fallen utility tools that expire after the given number of hours. |
+| `/feconomy tools give <player> <pickaxe|shovel|axe>` | Give one normal Fallen utility tool. |
+| `/feconomy tools give timed <player> <pickaxe|shovel|axe> <hours>` | Give one owner-bound timed tool. The timer drains only while the owner is online. |
+| `/feconomy tools give <player> sellwand <uses>` | Give one Sell Wand with limited successful uses. |
 | `/killeffects`, `/killeffect` | Open the kill effects GUI. |
 | `/killeffects clear` | Disable selected kill effect. |
 | `/killeffects reload` | Reload kill effects config. |
 
 Shop and Essence shop item clicks open a confirmation GUI before charging the player.
+
+Timed utility tools can transfer ownership only if the current owner drops them or loses them on death. Moving a tool through a chest does not rebind it.
