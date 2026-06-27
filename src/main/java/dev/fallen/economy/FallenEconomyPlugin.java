@@ -2109,7 +2109,9 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     holder.amountSlots.put(slot, delta);
     String prefix = delta > 0 ? "+" : "";
     Material material = delta > 0 ? Material.LIME_STAINED_GLASS_PANE : Material.RED_STAINED_GLASS_PANE;
-    inv.setItem(slot, navItem(material, "&e" + prefix + delta));
+    ItemStack button = navItem(material, "&e" + prefix + delta);
+    button.setAmount(Math.max(1, Math.min(button.getMaxStackSize(), Math.abs(delta))));
+    inv.setItem(slot, button);
   }
 
   private void redrawShopConfirm(ShopConfirmHolder holder) {
@@ -2122,7 +2124,8 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private ItemStack confirmShopIcon(BuyShopItem shopItem, int amount) {
     ItemStack icon = shopItem.item.clone();
-    icon.setAmount(Math.max(1, Math.min(icon.getMaxStackSize(), amount)));
+    int displayAmount = shopItem.currency == ShopCurrency.MONEY ? icon.getMaxStackSize() : amount;
+    icon.setAmount(Math.max(1, Math.min(icon.getMaxStackSize(), displayAmount)));
     ItemMeta meta = icon.getItemMeta();
     if (meta != null) {
       List<String> lore = meta.hasLore() && meta.getLore() != null ? new ArrayList<>(meta.getLore()) : new ArrayList<>();
@@ -2133,7 +2136,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       lore.add(color("&7Unit: &b" + format(unitShopPrice(shopItem)) + " " + currencyLabel(shopItem.currency)));
       lore.add(color("&eUse buttons below to change amount"));
       meta.setLore(lore);
-      meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+      hideShopTooltipNoise(meta);
       icon.setItemMeta(meta);
     }
     return icon;
@@ -2341,7 +2344,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
         lore.add(color("&eClick to choose amount"));
       }
       meta.setLore(lore);
-      meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES);
+      hideShopTooltipNoise(meta);
       icon.setItemMeta(meta);
     }
     return icon;
@@ -2390,6 +2393,10 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       item.setItemMeta(meta);
     }
     return item;
+  }
+
+  private void hideShopTooltipNoise(ItemMeta meta) {
+    meta.addItemFlags(ItemFlag.HIDE_ATTRIBUTES, ItemFlag.HIDE_ADDITIONAL_TOOLTIP);
   }
 
   private void cycleSort(Player player, MenuType type) {
