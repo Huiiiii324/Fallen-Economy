@@ -19,6 +19,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -56,6 +58,7 @@ import org.bukkit.event.player.PlayerCommandPreprocessEvent;
 import org.bukkit.event.player.PlayerDropItemEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
+import org.bukkit.enchantments.Enchantment;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.InventoryHolder;
 import org.bukkit.inventory.EquipmentSlot;
@@ -117,6 +120,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   private static final String TOOL_SHOVEL = "shovel_3x3";
   private static final String TOOL_AXE = "treecapitator_axe";
   private static final String TOOL_SELL_WAND = "sell_wand";
+  private static final Pattern HEX_COLOR_PATTERN = Pattern.compile("&#([A-Fa-f0-9]{6})");
 
   @Override
   public void onEnable() {
@@ -1334,7 +1338,16 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       meta.getPersistentDataContainer().set(toolKey, PersistentDataType.STRING, toolId);
       item.setItemMeta(meta);
     }
+    applyDefaultToolEnchantments(item, toolId);
     return item;
+  }
+
+  private void applyDefaultToolEnchantments(ItemStack item, String toolId) {
+    if (TOOL_SELL_WAND.equals(toolId)) return;
+    item.addUnsafeEnchantment(Enchantment.EFFICIENCY, 5);
+    item.addUnsafeEnchantment(Enchantment.UNBREAKING, 3);
+    item.addUnsafeEnchantment(Enchantment.MENDING, 1);
+    item.addUnsafeEnchantment(Enchantment.SILK_TOUCH, 1);
   }
 
   private boolean isSellWandName(String id) {
@@ -1354,9 +1367,9 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
 
   private String toolName(String toolId) {
     return switch (toolId) {
-      case TOOL_PICKAXE -> "&bFallen 3x3 Pickaxe";
-      case TOOL_SHOVEL -> "&bFallen 3x3 Shovel";
-      case TOOL_AXE -> "&bFallen Treecapitator Axe";
+      case TOOL_PICKAXE -> "&#E2E6EE&lꜰ&#CFD4E0&lᴀ&#BBC2D1&lʟ&#A8B0C3&lʟ&#959DB5&lᴇ&#818BA6&lɴ &#7986A7&lᴅ&#8492B6&lʀ&#909FC6&lɪ&#9BABD5&lʟ&#A6B8E4&lʟ";
+      case TOOL_SHOVEL -> "&#E2E6EE&lꜰ&#CFD4E0&lᴀ&#BBC2D1&lʟ&#A8B0C3&lʟ&#959DB5&lᴇ&#818BA6&lɴ &#7986A7&lꜱ&#8492B6&lᴘ&#909FC6&lᴀ&#9BABD5&lᴅ&#A6B8E4&lᴇ";
+      case TOOL_AXE -> "&#E2E6EE&lꜰ&#D4D8E3&lᴀ&#C5CBD9&lʟ&#B7BDCE&lʟ&#A8B0C3&lᴇ&#9AA2B8&lɴ &#7D87A3&lᴛ&#6E7998&lʀ&#7581A2&lᴇ&#7C89AB&lᴇ&#8391B5&lᴄ&#8A99BE&lᴜ&#91A0C8&lᴛ&#98A8D1&lᴛ&#9FB0DB&lᴇ&#A6B8E4&lʀ";
       case TOOL_SELL_WAND -> "&bFallen Sell Wand";
       default -> "&bFallen Tool";
     };
@@ -2995,7 +3008,18 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
   }
 
   private static String color(String message) {
-    return ChatColor.translateAlternateColorCodes('&', message);
+    Matcher matcher = HEX_COLOR_PATTERN.matcher(message);
+    StringBuffer buffer = new StringBuffer();
+    while (matcher.find()) {
+      String hex = matcher.group(1);
+      StringBuilder replacement = new StringBuilder("§x");
+      for (char character : hex.toCharArray()) {
+        replacement.append('§').append(character);
+      }
+      matcher.appendReplacement(buffer, replacement.toString());
+    }
+    matcher.appendTail(buffer);
+    return ChatColor.translateAlternateColorCodes('&', buffer.toString());
   }
 
   private String format(double value) {
