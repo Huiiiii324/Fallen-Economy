@@ -2099,7 +2099,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       player.sendMessage(color("&cThis shop item is no longer available."));
       return;
     }
-    ShopConfirmHolder holder = new ShopConfirmHolder(itemId, sourceType, category, page, Math.max(1, shopItem.item.getAmount()));
+    ShopConfirmHolder holder = new ShopConfirmHolder(itemId, sourceType, category, page, defaultShopPurchaseAmount(shopItem));
     Inventory inv = Bukkit.createInventory(holder, 27, color("&8Confirm Shop Purchase"));
     holder.inventory = inv;
     addAmountButton(inv, holder, 9, -64);
@@ -2157,6 +2157,13 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     else openBuyMenu(player, holder.category, holder.page);
   }
 
+  private int defaultShopPurchaseAmount(BuyShopItem shopItem) {
+    if (shopItem.currency == ShopCurrency.MONEY) {
+      return Math.max(1, Math.min(64, shopPreviewItem(shopItem.item).getMaxStackSize()));
+    }
+    return Math.max(1, shopItem.item.getAmount());
+  }
+
   @EventHandler
   public void onInventoryClick(InventoryClickEvent event) {
     if (!(event.getWhoClicked() instanceof Player player)) return;
@@ -2166,7 +2173,7 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       int invSize = event.getInventory().getSize();
       if (slot >= 45 && slot < invSize) {
         event.setCancelled(true);
-        if (slot == 49) sellChestContents(player, event.getInventory());
+        if (slot == 49) sellChestContentsOnClose(player, event.getInventory());
         return;
       }
       // Allow free item movement in slots 0-44 and player inventory, then refresh button
@@ -2283,7 +2290,11 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
       }
       if (slot == 22) {
         buyShopItem(player, confirm.itemId, shopSource(confirm.sourceType), confirm.amount);
-        returnToShop(player, confirm);
+        if (shopSource(confirm.sourceType).containsKey(confirm.itemId)) {
+          redrawShopConfirm(confirm);
+        } else {
+          returnToShop(player, confirm);
+        }
       } else if (slot == 24) {
         returnToShop(player, confirm);
       }
@@ -2295,12 +2306,27 @@ public final class FallenEconomyPlugin extends JavaPlugin implements Listener, T
     confirmations.remove(event.getPlayer().getUniqueId());
     if (!(event.getPlayer() instanceof Player player)) return;
     if (!(event.getInventory().getHolder() instanceof SellChestHolder)) return;
+    sellChestContentsOnClose(player, event.getInventory());
+  }
+
+  private void sellChestContentsOnClose(Player player, Inventory inv) {
+    double total = 0;
+    int soldItems = 0;
     for (int slot = 0; slot < 45; slot++) {
-      ItemStack item = event.getInventory().getItem(slot);
-      if (item != null && !item.getType().isAir()) {
+      ItemStack item = inv.getItem(slot);
+      if (item == null || item.getType().isAir()) continue;
+      double unitValue = sellValue(item.getType());
+      if (unitValue > 0) {
+        total += unitValue * item.getAmount();
+        soldItems += item.getAmount();
+      } else {
         giveOrDrop(player, item.clone());
-        event.getInventory().setItem(slot, null);
       }
+      inv.setItem(slot, null);
+    }
+    if (total > 0) {
+      economy.deposit(player, total);
+      player.sendMessage(color("&aSold &f" + soldItems + " &aitem(s) for &f" + format(total) + " " + moneyName + "&a."));
     }
   }
 
